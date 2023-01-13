@@ -1,0 +1,494 @@
+{-# LANGUAGE BlockArguments #-}
+{-# LANGUAGE ImpredicativeTypes #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PartialTypeSignatures #-}
+{-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TemplateHaskell #-}
+
+module Main where
+
+import Foreign
+import Foreign.C.Types
+import GHC.Event (
+    Event,
+    FdKey (..),
+    Lifetime (MultiShot),
+    TimeoutKey,
+    evtRead,
+    evtWrite,
+    getSystemEventManager,
+    getSystemTimerManager,
+    registerFd,
+    registerTimeout,
+    unregisterFd,
+    unregisterTimeout,
+    updateTimeout,
+ )
+
+import Control.Concurrent
+import Control.Concurrent.MVar
+import Control.Exception
+import Control.Monad
+import Data.ByteString (ByteString)
+import Data.ByteString qualified as BS
+import Data.ByteString.Builder (Builder)
+import Data.ByteString.Builder qualified as BSB
+import Data.ByteString.Internal qualified as BSI
+import Data.ByteString.Lazy qualified as BSL
+import Data.Coerce
+import Data.IORef (
+    IORef,
+    atomicModifyIORef',
+    modifyIORef',
+    newIORef,
+    readIORef,
+ )
+import Data.Maybe
+import Foreign.C
+import GHC.Conc (PrimMVar, newStablePtrPrimMVar)
+import Language.C.Inline qualified as C
+import PyF
+import PyFCustom
+import System.IO
+import System.Posix.Types (Fd (Fd))
+
+import Internal.Raw
+
+import Control.Monad.Cont
+import Data.ByteString.Unsafe qualified as BSU
+import Data.Foldable
+import GHC.Generics
+import System.Timeout
+import Types
+import Internal.Slist
+
+C.context (C.baseCtx <> C.funCtx <> C.fptrCtx <> C.bsCtx <> curlCtx)
+
+C.include "<string.h>"
+C.include "<stdlib.h>"
+
+C.include "<curl/curl.h>"
+C.include "HsFFI.h"
+
+C.include "curl_hs_c.h"
+
+curlSocketFunction :: Ptr () -> CInt -> CInt -> Ptr () -> Ptr () -> IO CInt
+curlSocketFunction _easy s what userp socketp = do
+    print [fmt|in socket fun - {show s} - {show what}|]
+    !em <- deRefStablePtr $ castPtrToStablePtr userp
+    case what of
+        -- CURL_POLL_REMOVE
+        4 -> when (socketp /= nullPtr) do
+            let fdKeysPtr = castPtrToStablePtr @(IORef [FdKey]) socketp
+            fdKeys <- readIORef =<< deRefStablePtr fdKeysPtr
+            print [fmt|removing fd - {show s}|]
+            traverse_ (unregisterFd em) fdKeys
+            freeStablePtr fdKeysPtr
+        what' -> do
+            let state = case what of
+                    -- CURL_POLL_IN
+                    1 -> evtRead
+                    -- CURL_POLL_OUT
+                    2 -> evtWrite
+                    -- CURL_POLL_INOUT
+                    3 -> evtRead <> evtWrite
+                    -- Basically impossible and we should die and be in heaven
+                    _ -> error "Invalid value for 'what' parameter"
+                lifetime = MultiShot
+            fdKey <- registerFd em curlPerform (Fd s) state lifetime
+            fdKeysPtr <-
+                if socketp /= nullPtr
+                    then do
+                        let fdKeysPtr = castPtrToStablePtr @(IORef [FdKey]) socketp
+                        fdKeysRef <- deRefStablePtr fdKeysPtr
+                        atomicModifyIORef' fdKeysRef (\x -> (fdKey : x, ()))
+                        pure socketp
+                    else do
+                        fdKeysRef <- newIORef [fdKey]
+                        castStablePtrToPtr <$> newStablePtr fdKeysRef
+            print [fmt|registered fd {show s} state {show state} key {show fdKey}|]
+            [C.block|void { 
+                //$fun:(void (*cPrint)(char *))("assign data\n");
+                curl_multi_assign(curl_multi_g, $(int s), $(void* fdKeysPtr));
+                }|]
+            return ()
+    print "done socket fun"
+    return 0
+
+cPrint :: CString -> IO ()
+cPrint ptr = BS.putStr =<< BS.packCString ptr
+
+curlPerform :: FdKey -> Event -> IO ()
+curlPerform fdKey evt = do
+    print [fmt|in action - {show fdKey} - {show evt}|]
+    let flags = 0 -- TODO: pass flags using custom Event unsafeCoerce black magic
+        fd :: CInt = coerce . keyFd $ fdKey
+    [C.block|void {
+        $fun:(void (*cPrint)(char *))("C in perform\n");
+        int running_handles;
+        
+        curl_multi_socket_action(curl_multi_g, $(int fd), $(int flags), &running_handles);
+        $fun:(void (*cPrint)(char *))("C after socket action\n");
+        CURLMsg *message;
+        int pending;
+
+        hs_curl_easy_data* hs_easy_data;
+
+        //$fun:(void (*cPrint)(char *))("in perform\n");
+
+        while ((message = curl_multi_info_read(curl_multi_g, &pending))) {
+                switch (message->msg) {
+                case CURLMSG_DONE:
+                    $fun:(void (*cPrint)(char *))("curlmsg done\n");
+                    curl_easy_getinfo(message->easy_handle, CURLINFO_PRIVATE, &hs_easy_data);
+                    
+                    if(!hs_easy_data){
+                        $fun:(void (*cPrint)(char *))("hs_easy_data empty\n");
+                    } else if (!(hs_easy_data->response_data)){
+                        $fun:(void (*cPrint)(char *))("hs_easy_data->response_data empty\n");
+                    }
+
+                    if(hs_easy_data){
+                        curl_easy_getinfo(message->easy_handle, CURLINFO_RESPONSE_CODE, &hs_easy_data->response_data->status_code);
+                    }
+                    else {
+                        $fun:(void (*cPrint)(char *))("tried to access empty hs_easy_data\n");
+                    }
+                    
+                    $fun:(void (*cPrint)(char *))("haskell data passed\n");
+                    
+                    hs_try_putmvar(-1, hs_easy_data->hs_mutex);
+
+                    $fun:(void (*cPrint)(char *))("waken thread\n");
+
+                    curl_multi_remove_handle(curl_multi_g, message->easy_handle);
+                    curl_easy_cleanup(message->easy_handle);
+                    if(hs_easy_data){
+                        free(hs_easy_data);
+                    }
+                    else {
+                        $fun:(void (*cPrint)(char *))("tried to double free hs_easy_data\n");
+                    }
+                    
+
+                    break;
+                default:
+                    break;
+                }
+            }
+    }|]
+    print "done action"
+    return ()
+
+curlTimerFunction :: Ptr () -> CLong -> Ptr () -> IO CInt
+curlTimerFunction _multi timeout_ms userp = do
+    print "in timer fun"
+    tm <- getSystemTimerManager -- Pass through userp?
+    case timeout_ms of
+        -1 -> do
+            print "unregistring timeout"
+            tkRef <- deRefStablePtr (castPtrToStablePtr @(IORef (Maybe TimeoutKey)) userp)
+            readIORef tkRef >>= \case
+                Just tk -> do
+                    unregisterTimeout tm tk
+                    atomicModifyIORef' tkRef (const (Nothing, ()))
+                Nothing -> return ()
+        0 -> do
+            print "do nothing"
+            pure ()
+        _ -> do
+            print "registring timeout"
+            let timeoutMicro = fromIntegral timeout_ms * 1000
+            tkRef <- deRefStablePtr (castPtrToStablePtr userp)
+            readIORef tkRef >>= \case
+                Just tk -> updateTimeout tm tk timeoutMicro
+                Nothing -> do
+                    tk <- registerTimeout tm timeoutMicro do
+                        [C.block|void {
+                            int running_handles;
+                            curl_multi_socket_action(curl_multi_g, CURL_SOCKET_TIMEOUT, 0, &running_handles);
+                        }|]
+                    atomicModifyIORef' tkRef (const $ (Just tk, ()))
+            print "registring timeout done"
+    print "done timer fun"
+    return 0
+
+curlCreateTimerCtx :: IO (Ptr ())
+curlCreateTimerCtx = do
+    timerManager <- getSystemTimerManager
+    tkStablePtr <- newStablePtr =<< newIORef (Nothing :: Maybe TimeoutKey)
+    pure $ castStablePtrToPtr tkStablePtr
+
+curlCreateSocketCallbackCtx :: IO (Ptr ())
+curlCreateSocketCallbackCtx = do
+    !em <- fromJust <$!> getSystemEventManager
+    emStablePtr <- newStablePtr em
+    pure $ castStablePtrToPtr emStablePtr
+
+curlDebugCallback :: Ptr () -> CInt -> CString -> CInt -> Ptr () -> IO CInt
+curlDebugCallback handle infotype str_data size usrptr = do
+    debugStr <- BS.packCStringLen (str_data, fromIntegral size)
+    print [fmt|{show infotype} => \n{debugStr}|]
+    return 0
+
+initCurlMulti :: IO (MVar ())
+initCurlMulti = do
+    emCtx <- curlCreateSocketCallbackCtx
+    timerCtx <- curlCreateTimerCtx
+    [C.block|void {
+        curl_global_init(CURL_GLOBAL_DEFAULT);
+        curl_multi_g = curl_multi_init();
+        
+        curl_multi_setopt(curl_multi_g, CURLMOPT_SOCKETDATA, $(void* emCtx));
+        curl_multi_setopt(curl_multi_g, CURLMOPT_SOCKETFUNCTION, $fun-alloc:(int (*curlSocketFunction)(void*, int, int, void*, void*)));
+
+        curl_multi_setopt(curl_multi_g, CURLMOPT_TIMERDATA, $(void* timerCtx));
+        curl_multi_setopt(curl_multi_g, CURLMOPT_TIMERFUNCTION, $fun-alloc:(int (*curlTimerFunction)(void*, long, void*)));
+
+        curl_multi_setopt(curl_multi_g, CURLMOPT_PIPELINING, CURLPIPE_MULTIPLEX);
+
+        //int running_handles;
+        //curl_multi_socket_action(curl_multi_g, CURL_SOCKET_TIMEOUT, 0, &running_handles);
+    }|]
+    newMVar ()
+
+mkCurl :: Request -> IO CurlInner
+mkCurl Request{..} = do
+    responseData <- malloc @CurlResponseData
+    slistPtr <- toHeaderSlistP headers
+
+    requestBodyRef <- newIORef $ BSL.toChunks requestBody
+    let readRequestBody :: Ptr CChar -> CSize -> CSize -> Ptr () -> IO CSize
+        readRequestBody buffer size nitems userdata = do
+            !bsChunks <- readIORef requestBodyRef
+            let (newChunks, chunk) = takeChunk (fromIntegral $ size * nitems) bsChunks
+            modifyIORef' requestBodyRef (const newChunks)
+            BSU.unsafeUseAsCStringLen chunk $ \(src, srcLen) -> BSI.memcpy (castPtr buffer) (castPtr src) srcLen
+            pure $ fromIntegral $ BS.length chunk
+    readRequestBodyPtr <- $(C.mkFunPtr [t|Ptr CChar -> CSize -> CSize -> Ptr () -> IO CSize|]) readRequestBody
+
+    responseBodyRef <- newIORef $ mempty @Builder
+    let writeResponseBody :: Ptr CChar -> CSize -> CSize -> Ptr () -> IO CSize
+        writeResponseBody cStr _size nmemb _userdata = do
+            str <- BS.packCStringLen (cStr, fromIntegral nmemb)
+            modifyIORef' responseBodyRef (<> BSB.byteString str)
+            pure . fromIntegral $ BS.length str
+    writeResponseBodyPtr <- $(C.mkFunPtr [t|Ptr CChar -> CSize -> CSize -> Ptr () -> IO CSize|]) writeResponseBody
+
+    wakeUp <- newEmptyMVar @()
+    !wakeUpSPtr <- newStablePtrPrimMVar wakeUp
+    let wakeUpPtr = castStablePtrToPtr wakeUpSPtr
+
+    easy <-
+        [C.block|CURL* {
+        CURL *easy;
+        CURLcode res;
+        easy = curl_easy_init();
+        if(easy && curl_multi_g) {
+          //curl_easy_setopt(easy, CURLOPT_VERBOSE, 1L);
+          //curl_easy_setopt(easy, CURLOPT_DEBUGFUNCTION, $fun-alloc:(int (*curlDebugCallback)(void*, int, char*, int, void*)));
+
+          curl_easy_setopt(easy, CURLOPT_URL, $bs-cstr:host);
+          curl_easy_setopt(easy, CURLOPT_HTTPHEADER, $(curl_slist_t* slistPtr));
+          curl_easy_setopt(easy, CURLOPT_TIMEOUT_MS, $(long timeoutMS));
+          curl_easy_setopt(easy, CURLOPT_FOLLOWLOCATION, 1L);
+
+          curl_easy_setopt(easy, CURLOPT_POST, 1L);
+          
+          hs_curl_easy_data* callback_data = malloc(sizeof(hs_curl_easy_data));
+
+          callback_data->hs_mutex = $(void* wakeUpPtr);
+          callback_data->response_data = $(hs_curl_response_data* responseData);
+
+          curl_easy_setopt(easy, CURLOPT_PRIVATE, (void*) callback_data);
+
+          curl_easy_setopt(easy, CURLOPT_READFUNCTION, $(size_t (*readRequestBodyPtr)(char*, size_t, size_t, void*)));
+          curl_easy_setopt(easy, CURLOPT_WRITEFUNCTION, $(size_t (*writeResponseBodyPtr)(char*, size_t, size_t, void*)));
+          
+          curl_easy_setopt(easy, CURLOPT_NOSIGNAL, 1L);
+
+          return easy;
+        }
+    }|]
+
+    pure
+        CurlInner
+            { easy
+            , wakeUp
+            , wakeUpSPtr
+            , slistPtr
+            , readRequestBodyPtr
+            , writeResponseBodyPtr
+            , responseData
+            , responseBodyRef
+            }
+
+performCurlInner :: MVar () -> CurlInner -> IO (CurlResponseData, BSL.ByteString)
+performCurlInner curlm CurlInner{..} = do
+    withMVar curlm \_ -> do
+        print "mvar taken"
+        [C.block|void {
+        curl_multi_add_handle(curl_multi_g, $(CURL* easy));
+        int running_handles;
+        curl_multi_socket_action(curl_multi_g, CURL_SOCKET_TIMEOUT, 0, &running_handles);
+        }|]
+    takeMVar wakeUp
+    print "waked up"
+    rd <- peek responseData
+    responseBody <- BSB.toLazyByteString <$> readIORef responseBodyRef
+    pure (rd, responseBody)
+
+cancelEasy :: CurlInner -> IO ()
+cancelEasy CurlInner{..} = do
+    print "exception clean up"
+    [C.block|void {
+        if ($(CURL* easy)){
+            curl_multi_remove_handle(curl_multi_g, $(CURL* easy));
+            curl_easy_cleanup($(CURL* easy));
+        }
+    }|]
+    freeStablePtr wakeUpSPtr
+
+cleanUp :: CurlInner -> IO ()
+cleanUp CurlInner{..} = do
+    print "clean up noop"
+    free slistPtr
+    freeHaskellFunPtr readRequestBodyPtr
+    freeHaskellFunPtr writeResponseBodyPtr
+
+performRequestS :: MVar () -> Request -> IO (CurlResponseData, BSL.ByteString)
+performRequestS curlm req = bracket (mkCurl req) cleanUp (\inner -> performCurlInner curlm inner `onException` cancelEasy inner)
+
+performRequest :: ByteString -> CLong -> BSL.ByteString -> [ByteString] -> ContT r IO (CurlResponseData, BSL.ByteString)
+performRequest host timeoutMS requestBody headers = do
+    responseData <- ContT $ alloca @CurlResponseData
+    slist@(CurlSlist slistFp) <- lift $ toHeaderSlist headers
+    slistPtr <- ContT $ withCurlSlist slist
+
+    requestBodyRef <- lift $ newIORef $ BSL.toChunks requestBody
+    let readRequestBody :: Ptr CChar -> CSize -> CSize -> Ptr () -> IO CSize
+        readRequestBody buffer size nitems userdata = do
+            !bsChunks <- readIORef requestBodyRef
+            let (newChunks, chunk) = takeChunk (fromIntegral $ size * nitems) bsChunks
+            modifyIORef' requestBodyRef (const newChunks)
+            BSU.unsafeUseAsCStringLen chunk $ \(src, srcLen) -> BSI.memcpy (castPtr buffer) (castPtr src) srcLen
+            pure $ fromIntegral $ BS.length chunk
+        mkReadRequestBodyPtr = $(C.mkFunPtr [t|Ptr CChar -> CSize -> CSize -> Ptr () -> IO CSize|]) readRequestBody
+    readRequestBodyPtr <- ContT $ \cont -> bracket mkReadRequestBodyPtr freeHaskellFunPtr cont
+
+    responseBodyRef <- lift $ newIORef $ mempty @Builder
+    let writeResponseBody :: Ptr CChar -> CSize -> CSize -> Ptr () -> IO CSize
+        writeResponseBody cStr _size nmemb _userdata = do
+            str <- BS.packCStringLen (cStr, fromIntegral nmemb)
+            modifyIORef' responseBodyRef (<> BSB.byteString str)
+            pure . fromIntegral $ BS.length str
+        mkWriteResponseBodyPtr = $(C.mkFunPtr [t|Ptr CChar -> CSize -> CSize -> Ptr () -> IO CSize|]) writeResponseBody
+    writeResponseBodyPtr <- ContT $ \cont -> bracket mkWriteResponseBodyPtr freeHaskellFunPtr cont
+
+    wakeUp <- lift $ newEmptyMVar @()
+    !wakeUpPtr <- lift $ castStablePtrToPtr <$!> newStablePtrPrimMVar wakeUp
+    easy <-
+        lift
+            [C.block|CURL* {
+        CURL *easy;
+        CURLcode res;
+        easy = curl_easy_init();
+        if(easy && curl_multi_g) {
+          //curl_easy_setopt(easy, CURLOPT_VERBOSE, 1L);
+          //curl_easy_setopt(easy, CURLOPT_DEBUGFUNCTION, $fun-alloc:(int (*curlDebugCallback)(void*, int, char*, int, void*)));
+
+          curl_easy_setopt(easy, CURLOPT_URL, $bs-cstr:host);
+          curl_easy_setopt(easy, CURLOPT_HTTPHEADER, $(curl_slist_t* slistPtr));
+          curl_easy_setopt(easy, CURLOPT_TIMEOUT_MS, $(long timeoutMS));
+          curl_easy_setopt(easy, CURLOPT_FOLLOWLOCATION, 1L);
+
+          curl_easy_setopt(easy, CURLOPT_POST, 1L);
+          
+          hs_curl_easy_data* callback_data = malloc(sizeof(hs_curl_easy_data));
+
+          callback_data->hs_mutex = $(void* wakeUpPtr);
+          callback_data->response_data = $(hs_curl_response_data* responseData);
+
+          curl_easy_setopt(easy, CURLOPT_PRIVATE, (void*) callback_data);
+
+          curl_easy_setopt(easy, CURLOPT_READFUNCTION, $(size_t (*readRequestBodyPtr)(char*, size_t, size_t, void*)));
+          curl_easy_setopt(easy, CURLOPT_WRITEFUNCTION, $(size_t (*writeResponseBodyPtr)(char*, size_t, size_t, void*)));
+          
+          curl_easy_setopt(easy, CURLOPT_NOSIGNAL, 1L);
+          
+          curl_multi_add_handle(curl_multi_g, easy);
+          
+          int running_handles;
+          curl_multi_socket_action(curl_multi_g, CURL_SOCKET_TIMEOUT, 0, &running_handles);
+
+          return easy;
+        }
+    }|]
+    lift $
+        takeMVar wakeUp `onException` forkIO do
+            takeMVar wakeUp
+            touchForeignPtr slistFp
+            [C.block|void {
+                if ($(CURL* easy)){
+                    curl_multi_remove_handle(curl_multi_g, $(CURL* easy));
+                    curl_easy_cleanup($(CURL* easy));
+                }
+            }|]
+    -- rd <- lift $ peek responseData
+    -- responseBody <- lift $ BSB.toLazyByteString <$> readIORef responseBodyRef
+    -- pure (rd, responseBody)
+    pure (CurlResponseData{statusCode = 500}, "asa")
+
+takeChunk :: Int -> [ByteString] -> ([ByteString], ByteString)
+takeChunk len [] = ([], "")
+takeChunk len ("" : xs) = takeChunk len xs
+takeChunk len (chunk : xs) =
+    let (now, later) = BS.splitAt len chunk
+     in (later : xs, now)
+
+performRequestTest :: IO ()
+performRequestTest = do
+    let headers = ["Transfer-Encoding: chunked", "Accept: application/json", "Content-Type: application/json", "charset: utf-8"]
+        body = [cFmt|{ "Its" : "Alive" }|]
+    (rb, resp) <- runContT (performRequest "https://example.com" 5000 body headers) pure
+    print rb
+    print resp
+
+performRequestTestS :: MVar () -> IO ()
+performRequestTestS curlm = do
+    let headers = ["Transfer-Encoding: chunked", "Accept: application/json", "Content-Type: application/json", "charset: utf-8"]
+        body = [cFmt|{ "Its" : "Alive" }|]
+        req = Request{host = "https://example.com", timeoutMS = 0, requestBody = body, headers = headers}
+    (rb, resp) <- performRequestS curlm req
+    print rb
+    print resp
+
+main :: IO ()
+main = do
+    curlm <- initCurlMulti
+    print "initialized"
+    performRequestTestS curlm
+    performRequestTestS curlm
+    performRequestTestS curlm
+    performRequestTestS curlm
+    performRequestTestS curlm
+    performRequestTestS curlm
+    performRequestTestS curlm
+    performRequestTestS curlm
+    -- timeout 500_000 $ performRequestTest
+    -- timeout 500_000 $ performRequestTest
+    -- timeout 500_000 $ performRequestTest
+    -- timeout 500_000 $ performRequestTest
+    -- timeout 500_000 $ performRequestTest
+    -- performRequestTest
+    -- performRequestTest
+    -- performRequestTest
+    {- timeout 500_000 performRequestTest -}
+    -- timeout 500_000 performRequestTest
+    -- timeout 500_000 performRequestTest
+    -- timeout 500_000 performRequestTest
+    print "done, waiting 5 sec"
+    threadDelay 5_000_000
+    print "done"

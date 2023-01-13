@@ -1,0 +1,82 @@
+name: hurl
+version: 0.1.0.0
+github: "diamondy4/hurl"
+license: Apache-2.0
+author: "Diamondy4"
+maintainer: "diamondy4@hotmail.com"
+copyright: "2022 Diamondy4"
+
+extra-source-files:
+  - README.md
+  - ChangeLog.md
+
+synopsis: Network client based on curl multi interface
+category: Web
+
+
+# To avoid duplicated efforts in documentation and dealing with the
+# complications of embedding Haddock markup inside cabal files, it is
+# common to point users to the README.md file.
+description: Please see the README on GitHub at <https://github.com/githubuser/hurl#readme>
+
+dependencies:
+  - base >= 4.7 && < 5
+  - inline-c
+  - template-haskell
+  - PyF
+  - containers
+  - parsers
+  - bytestring
+  - text
+  - mtl
+  - unagi-chan
+  - flush-queue
+  - unliftio
+  - unordered-containers
+  - primitive
+  - stm
+  - vector-hashtables
+  - hashable
+  - stm-delay
+  - time
+  - stm-chans
+  - async
+
+ghc-options:
+  - -Wall
+  - -Wincomplete-patterns
+
+include-dirs:
+  - cbits
+
+language: GHC2021
+
+extra-libraries:
+  - curl
+
+build-tools:
+  - c2hs
+
+library:
+  source-dirs: src
+
+executables:
+  hurl-exe:
+    main: Main.hs
+    source-dirs: app
+    ghc-options:
+      - -threaded
+      - -rtsopts
+      - -with-rtsopts=-N
+    dependencies:
+      - hurl
+tests:
+  hurl-test:
+    main: Spec.hs
+    source-dirs: test
+    ghc-options:
+      - -threaded
+      - -rtsopts
+      - -with-rtsopts=-N
+    dependencies:
+      - hurl
