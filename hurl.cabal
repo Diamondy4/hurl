@@ -47,6 +47,8 @@ library
       Paths_hurl
   hs-source-dirs:
       src
+  default-extensions:
+      OverloadedStrings
   ghc-options: -Wall -Wincomplete-patterns
   include-dirs:
       cbits
@@ -64,6 +66,7 @@ library
     , hashable
     , inline-c
     , mtl
+    , mutable-containers
     , parsers
     , primitive
     , stm
@@ -75,6 +78,7 @@ library
     , unagi-chan
     , unliftio
     , unordered-containers
+    , vector
     , vector-hashtables
   default-language: GHC2021
 
@@ -84,6 +88,8 @@ executable hurl-exe
       Paths_hurl
   hs-source-dirs:
       app
+  default-extensions:
+      OverloadedStrings
   ghc-options: -Wall -Wincomplete-patterns -threaded -rtsopts -with-rtsopts=-N
   include-dirs:
       cbits
@@ -102,6 +108,7 @@ executable hurl-exe
     , hurl
     , inline-c
     , mtl
+    , mutable-containers
     , parsers
     , primitive
     , stm
@@ -113,6 +120,7 @@ executable hurl-exe
     , unagi-chan
     , unliftio
     , unordered-containers
+    , vector
     , vector-hashtables
   default-language: GHC2021
 
@@ -123,6 +131,8 @@ test-suite hurl-test
       Paths_hurl
   hs-source-dirs:
       test
+  default-extensions:
+      OverloadedStrings
   ghc-options: -Wall -Wincomplete-patterns -threaded -rtsopts -with-rtsopts=-N
   include-dirs:
       cbits
@@ -141,6 +151,7 @@ test-suite hurl-test
     , hurl
     , inline-c
     , mtl
+    , mutable-containers
     , parsers
     , primitive
     , stm
@@ -152,5 +163,6 @@ test-suite hurl-test
     , unagi-chan
     , unliftio
     , unordered-containers
+    , vector
     , vector-hashtables
   default-language: GHC2021

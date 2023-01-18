@@ -1,6 +1,5 @@
 module Response where
 
-import Control.Concurrent.STM.TBMQueue (TBMQueue)
 import Data.ByteString
 import GHC.Generics
 
@@ -15,5 +14,3 @@ data HttpParts = HttpParts
     , headers :: [(ByteString, ByteString)]
     }
     deriving (Show, Eq, Generic)
-
-newtype Body = BodyChan (TBMQueue ByteString)

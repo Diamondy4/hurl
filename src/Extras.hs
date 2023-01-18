@@ -1,7 +1,3 @@
-{-# LANGUAGE BlockArguments #-}
-{-# LANGUAGE ImpredicativeTypes #-}
-{-# LANGUAGE PartialTypeSignatures #-}
-
 module Extras where
 
 import Control.Concurrent.STM
@@ -16,3 +12,6 @@ cPrint ptr = BS.putStr =<< BS.packCString ptr
 -}
 writeTMVar :: TMVar a -> a -> STM ()
 writeTMVar t new = tryTakeTMVar t >> putTMVar t new
+
+flushTQueueWait :: TQueue a -> STM [a]
+flushTQueueWait t = peekTQueue t *> flushTQueue t

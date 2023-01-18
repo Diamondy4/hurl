@@ -1,4 +1,5 @@
 {-# LANGUAGE BlockArguments #-}
+{-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE ImpredicativeTypes #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MagicHash #-}
@@ -14,19 +15,22 @@ module Agent where
 
 import Control.Applicative
 import Control.Concurrent
+import Control.Concurrent.Async (Async)
 import Control.Concurrent.Async qualified as Async
 import Control.Concurrent.STM
 import Control.Concurrent.STM.Delay (newDelay, waitDelay)
 import Control.Concurrent.STM.TBMQueue
 import Control.Exception
 import Control.Monad (forever, void, when)
+import Data.Containers.ListUtils
 import Data.Foldable (for_, traverse_)
-import Data.HashMap.Strict qualified as HM
-import Data.IORef (modifyIORef', newIORef, readIORef)
 import Data.Maybe
-import Foreign (freeHaskellFunPtr, newStablePtr)
+import Data.Vector.Hashtables qualified as VHT
+import Foreign (freeHaskellFunPtr)
 import Foreign.C.Types (CInt (..))
+import Foreign.StablePtr
 import GHC.Event
+import GHC.Generics
 import Internal.Callbacks
 import Internal.Easy
 import Internal.Multi
@@ -47,6 +51,32 @@ C.include "HsFFI.h"
 
 C.include "curl_hs_c.h"
 
+data AgentMessage where
+    Close :: AgentMessage
+    Execute :: !RequestHandler -> AgentMessage
+    UnpauseRead :: !RequestId -> AgentMessage
+    UnpauseWrite :: !RequestId -> AgentMessage
+    CancelRequest :: !RequestId -> AgentMessage
+
+data AgentContext = AgentContext
+    { multi :: !CurlMulti
+    , eventManager :: !EventManager
+    , msgQueue :: !(TQueue AgentMessage)
+    , socketActionQueue :: !(TQueue SocketActionRequest)
+    , requests :: !(HashTable RequestId RequestHandler)
+    , fdMap :: !(HashTable Fd FdState)
+    , timerWaker :: !(TMVar ())
+    , msgQueueAlive :: !(StablePtr (TQueue AgentMessage))
+    }
+    deriving (Generic)
+
+data AgentHandle = AgentHandle
+    { msgQueue :: !(TQueue AgentMessage)
+    , agentThreadId :: !(Async ())
+    , agent :: !AgentContext
+    }
+    deriving (Generic)
+
 spawnAgent :: IO AgentHandle
 spawnAgent = do
     Just eventManager <- getSystemEventManager
@@ -64,12 +94,13 @@ spawnAgent = do
 
 new :: EventManager -> CurlMulti -> CurlTimerFunEnv -> CurlSocketFunEnv -> TQueue AgentMessage -> IO AgentContext
 new eventManager multi timerCtx socketCtx msgQueue = do
-    requestsRef <- newIORef mempty
+    requests <- VHT.initialize 100
     msgQueueAlive <- newStablePtr msgQueue
-    pure $ AgentContext{fdMapRef = socketCtx.fdMapRef, timerWaker = timerCtx.timerWaiter, socketActionQueue = socketCtx.socketActionQueue, ..}
+    pure $ AgentContext{fdMap = socketCtx.fdMap, timerWaker = timerCtx.timerWaiter, socketActionQueue = socketCtx.socketActionQueue, ..}
 
 run :: AgentContext -> IO ()
 run ctx = forever $ do
+    -- print "iterating"
     -- print "polling messages"
     pollMessages ctx
     -- print "polling sockets"
@@ -82,8 +113,8 @@ pollMessages ctx@AgentContext{..} = go Continue
   where
     go Stop = return ()
     go Continue = do
-        requests <- readIORef requestsRef
-        if HM.null requests
+        noActiveRequests <- VHT.null requests
+        if noActiveRequests
             then do
                 atomically (readTQueue msgQueue) >>= handleMessage ctx
                 go Continue
@@ -99,11 +130,11 @@ handleMessage ctx = \case
     Close -> error "Not implemented"
     Execute request -> doRequest ctx request
     CancelRequest requestId -> do
-        requests <- readIORef ctx.requestsRef
-        for_ (HM.lookup requestId requests) (cancelRequest ctx)
+        request <- VHT.lookup ctx.requests requestId
+        for_ request (cancelRequest ctx)
     UnpauseRead requestId -> do
-        requests <- readIORef ctx.requestsRef
-        case HM.lookup requestId requests of
+        request <- VHT.lookup ctx.requests requestId
+        case request of
             Just handler -> withCurlEasy handler.easy unpauseWrite
             Nothing -> pure ()
     UnpauseWrite _ -> error "Not implemented"
@@ -111,8 +142,9 @@ handleMessage ctx = \case
 doRequest :: AgentContext -> RequestHandler -> IO ()
 doRequest AgentContext{..} ci@(RequestHandler{..}) = withCurlMulti multi \multiPtr -> withCurlEasy easy \easyPtr -> do
     [C.block|void { curl_multi_add_handle($(CURLM* multiPtr), $(CURL* easyPtr)); }|]
-    modifyIORef' requestsRef (HM.insert (handlerRequestId ci) ci)
-    -- print "add new request"
+    VHT.insert requests (handlerRequestId ci) ci
+
+-- print "add new request"
 
 poll :: AgentContext -> IO ()
 poll ctx@AgentContext{..} = do
@@ -123,14 +155,6 @@ poll ctx@AgentContext{..} = do
     when isExpired $ onTimer ctx
   where
     triggerTimerLimited limitDelay = waitDelay limitDelay <|> readTMVar timerWaker
-    _collectSocketAction_old limitDelay = do
-        action <- atomically $ (Just <$> readTQueue socketActionQueue) <|> (Nothing <$ triggerTimerLimited limitDelay)
-        case action of
-            Just action' -> do
-                actions <- _collectSocketAction_old limitDelay
-                pure (action' : actions)
-            Nothing -> do
-                return mempty
     -- Poll actions until we detect at least one or timeout rings
     awaitSocketActions limitDelay = do
         -- print "collect socket actions"
@@ -139,14 +163,15 @@ poll ctx@AgentContext{..} = do
             if socketActivity
                 then flushTQueue socketActionQueue
                 else pure mempty
-        -- print [fmt|traversing actions - {length actions} acts|]
-        traverse_ (processSocketActionRequest ctx) actions
+        let acts = nubOrd actions
+        -- print [fmt|traversing actions - {length acts} acts|]
+        traverse_ (processSocketActionRequest ctx) acts
 
 processMultiMsg :: AgentContext -> CurlMultiMsg -> IO ()
 processMultiMsg ac@AgentContext{..} msg = do
     let requestId = easyPtrRequestId msg.easy
-    hm <- readIORef requestsRef
-    case HM.lookup requestId hm of
+    request <- VHT.lookup requests requestId
+    case request of
         Just requestHandler -> completeRequestMulti ac requestHandler msg
         Nothing -> return ()
 
@@ -188,29 +213,23 @@ processMessages ac@AgentContext{..} = withCurlMulti multi $ \multiPtr -> do
     completeRequestMulti' easyPtr resultCode = do
         -- print "in processing msg"
         processMultiMsg ac $ CurlMultiMsg{result = toEnum . fromIntegral @CInt $ resultCode, easy = easyPtr}
-    _old_completeRequestMulti' rawMsg = do
-        -- print "in processing msg"
-        msg <- extractMessage (CurlMultiMsgRaw rawMsg)
-        processMultiMsg ac msg
 
 cancelRequest :: AgentContext -> RequestHandler -> IO ()
 cancelRequest ctx reqHandler = withCurlMulti ctx.multi \multiPtr -> withCurlEasy reqHandler.easy \easyPtr -> do
-    modifyIORef' ctx.requestsRef \requests -> do
-        HM.delete (handlerRequestId reqHandler) requests
+    VHT.delete ctx.requests (handlerRequestId reqHandler)
     [C.block|void { curl_multi_remove_handle($(CURLM* multiPtr), $(CURL* easyPtr));}|]
-    freeHaskellFunPtr reqHandler.readRequestBodyPtr
     freeHaskellFunPtr reqHandler.writeResponseBodyPtr
-    -- print "request cancelled"
+
+-- print "request cancelled"
 
 completeRequestMulti :: AgentContext -> RequestHandler -> CurlMultiMsg -> IO ()
-completeRequestMulti ac reqHandler msg = withCurlMulti ac.multi \multiPtr -> withCurlEasy reqHandler.easy \easyPtr -> do
+completeRequestMulti ctx reqHandler msg = withCurlMulti ctx.multi \multiPtr -> withCurlEasy reqHandler.easy \easyPtr -> do
     let requestId = handlerRequestId reqHandler
-    modifyIORef' ac.requestsRef \requests -> do
-        HM.delete requestId requests
+    VHT.delete ctx.requests requestId
     [C.block|void { curl_multi_remove_handle($(CURLM* multiPtr), $(CURL* easyPtr));}|]
     atomically $ closeTBMQueue reqHandler.responseBodyChan
-    freeHaskellFunPtr reqHandler.readRequestBodyPtr
     freeHaskellFunPtr reqHandler.writeResponseBodyPtr
     completeResponse reqHandler.completedResponse
     void $ tryPutMVar reqHandler.doneRequest msg.result
-    -- print "request completed"
+
+-- print "request completed"

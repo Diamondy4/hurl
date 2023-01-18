@@ -29,3 +29,15 @@ enum HttpRequestType
     GET,
     POST
 };
+
+typedef enum body_type
+{
+    EMPTY,
+    WRITER_FUNPTR
+} body_type;
+
+typedef struct body_data
+{
+    body_type body_type;
+    curl_write_callback cb;
+} body_data;

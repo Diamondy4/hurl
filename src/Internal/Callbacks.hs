@@ -16,53 +16,27 @@ import GHC.Event
 import Control.Concurrent.STM
 import Data.ByteString qualified as BS
 import Data.Foldable
-import Data.HashMap.Strict qualified as HM
-import Data.IORef
+import Data.Vector.Hashtables qualified as VHT
 import Event qualified as InnerEvent
 import Event qualified as UnsafeEvent
-import Extras
+import Extras (writeTMVar)
 import Foreign.C
 import Internal.Raw
 import PyF
 import System.Posix.Types
 import Types
 
-{- curlSocketFunction1 :: CurlSocketFunEnv -> Ptr CurlEasy -> CInt -> CInt -> Ptr () -> Ptr () -> IO CInt
-curlSocketFunction1 socketUpdates _easy s what _userp _socketp = do
-    let fd = Fd s
-        status = toEnum . fromIntegral $ what
-    case status of
-        CurlPollRemove -> do
-            print "in socket fun - removing socket"
-            fdMap <- readIORef $ socketUpdates.fdMapRef
-            case HM.lookup fd fdMap of
-                Just fdKeys -> do
-                    traverse_ (unregisterFd socketUpdates.eventManager) fdKeys
-                    atomicModifyIORef' socketUpdates.fdMapRef (\fdMap' -> (HM.delete fd fdMap', ()))
-                Nothing -> do return ()
-        curlSocketState -> do
-            let ghcSocketState = case curlSocketState of
-                    CurlPollIn -> evtRead
-                    CurlPollOut -> evtWrite
-                    CurlPollInOut -> evtRead <> evtWrite
-                lifetime = MultiShot
-            print [fmt|in socket fun - working on socket - {show fd} - {show ghcSocketState}|]
-            fdKey <- registerFd socketUpdates.eventManager (socketCallback socketUpdates.socketActionQueue) fd ghcSocketState lifetime
-            atomicModifyIORef' socketUpdates.fdMapRef (\fdMap' -> (HM.insertWith (<>) fd [fdKey] fdMap', ()))
-    return 0 -}
-
 curlSocketFunction :: CurlSocketFunEnv -> Ptr CurlEasy -> CInt -> CInt -> Ptr () -> Ptr () -> IO CInt
-curlSocketFunction socketUpdates _easy s what _userp _socketp = do
+curlSocketFunction socketEnv _easy s what _userp _socketp = do
     let fd = Fd s
         status = toEnum . fromIntegral $ what
     case status of
         CurlPollRemove -> do
             -- print "in socket fun - removing socket"
-            fdMap <- readIORef $ socketUpdates.fdMapRef
-            case HM.lookup fd fdMap of
-                Just fdState -> do
-                    traverse_ (unregisterFd socketUpdates.eventManager) fdState.fdKeys
-                    atomicModifyIORef' socketUpdates.fdMapRef (\fdMap' -> (HM.delete fd fdMap', ()))
+            VHT.lookup socketEnv.fdMap fd >>= \case
+                Just !fdState -> do
+                    traverse_ (unregisterFd socketEnv.eventManager) fdState.fdKeys
+                    VHT.delete socketEnv.fdMap fd
                 Nothing -> return ()
         curlSocketState -> do
             let ghcSocketEvent = case curlSocketState of
@@ -72,21 +46,22 @@ curlSocketFunction socketUpdates _easy s what _userp _socketp = do
                 innerSocketEvent = InnerEvent.fromGHCEvent ghcSocketEvent
                 lifetime = MultiShot
             -- print [fmt|in socket fun - working on socket - {show fd} - {show ghcSocketEvent}|]
-            fdMap <- readIORef $ socketUpdates.fdMapRef
-            case HM.lookup fd fdMap of
+            VHT.lookup socketEnv.fdMap fd >>= \case
                 -- event already registered on fd, we shouldn't update it
-                Just fdState | InnerEvent.fromGHCEvent fdState.registeredEvents `InnerEvent.eventIs` innerSocketEvent -> pure () -- print [fmt|in socket fun - already known event - {show fdState}|] *> pure ()
+                Just !fdState | InnerEvent.fromGHCEvent fdState.registeredEvents `InnerEvent.eventIs` innerSocketEvent -> pure () -- print [fmt|in socket fun - already known event - {show fdState}|] *> pure ()
                 _ -> do
                     -- print "in socket fun - unknown event"
-                    fdKey <- registerFd socketUpdates.eventManager (socketCallback socketUpdates.socketActionQueue) fd ghcSocketEvent lifetime
+                    fdKey <- registerFd socketEnv.eventManager (socketCallback socketEnv.socketActionQueue) fd ghcSocketEvent lifetime
                     let fdState = FdState{registeredEvents = ghcSocketEvent, fdKeys = [fdKey]}
-                    atomicModifyIORef' socketUpdates.fdMapRef (\fdMap' -> (HM.insertWith (<>) fd fdState fdMap', ()))
+                        updateFdState (Just fdStateOld) = Just $! fdStateOld <> fdState
+                        updateFdState Nothing = Just fdState
+                    VHT.alter socketEnv.fdMap updateFdState fd
     return 0
 
 curlTimerFunction :: CurlTimerFunEnv -> Ptr CurlMulti -> CLong -> Ptr () -> IO CInt
-curlTimerFunction timerData _multiPtr timeout_ms _userp = do
-    let tm = timerManager timerData
-        tkRef = timerKey timerData
+curlTimerFunction timerEnv _multiPtr timeout_ms _userp = do
+    let tm = timerManager timerEnv
+        tkRef = timerKey timerEnv
     case timeout_ms of
         -1 ->
             atomically (tryTakeTMVar tkRef) >>= \case
@@ -98,7 +73,7 @@ curlTimerFunction timerData _multiPtr timeout_ms _userp = do
                 Just tk -> updateTimeout tm tk timeoutMicro
                 Nothing -> do
                     tk <- registerTimeout tm timeoutMicro do
-                        atomically $ writeTMVar (timerWaiter timerData) ()
+                        atomically $ writeTMVar (timerWaiter timerEnv) ()
                     atomically $ writeTMVar tkRef tk
     return 0
 
@@ -112,7 +87,7 @@ curlCreateTimerCtx = do
 curlCreateSocketCallbackCtx :: EventManager -> IO CurlSocketFunEnv
 curlCreateSocketCallbackCtx eventManager = do
     socketActionQueue <- newTQueueIO
-    fdMapRef <- newIORef mempty
+    fdMap <- VHT.initialize 100
     pure $ CurlSocketFunEnv{..}
 
 curlDebugCallback :: Ptr () -> CInt -> CString -> CInt -> Ptr () -> IO CInt

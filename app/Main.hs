@@ -13,10 +13,10 @@ module Main where
 import Control.Concurrent
 import PyFCustom
 
+import Agent (AgentHandle)
 import Agent qualified
 import Control.Exception
 import Control.Monad
-import Internal.Raw (CurlCode (Ok))
 import Request
 import Simple
 import Types
@@ -24,8 +24,8 @@ import Types
 performRequestTest :: AgentHandle -> IO ()
 performRequestTest agent = do
     let headers = ["Transfer-Encoding: chunked", "Accept: application/json", "Content-Type: application/json", "charset: utf-8"]
-        body = [cFmt|{ "Its" : "Alive" }|]
-        req = Request{host = "https://eoqs3gfexu6bl9.m.pipedream.net", timeoutMS = 0, requestBody = body, headers = headers}
+        body = Buffer [cFmt|{ "Its" : "Alive" }|]
+        req = Request{host = "https://eoqs3gfexu6bl9.m.pipedream.net", timeoutMS = 0, body, headers = headers, method = Post}
     response <- performRequestBS agent req
     print response
 
@@ -37,10 +37,13 @@ main = do
     initCurl
     agent <- Agent.spawnAgent
     print "initialized"
-    reqThread <- forkIO $ performRequestTest agent
+    --reqThread <- forkIO $ performRequestTest agent
     void . forkIO $ performRequestTest agent
     void . forkIO $ performRequestTest agent
+    void . forkIO $ performRequestTest agent
+    void . forkIO $ performRequestTest agent
+    --void . forkIO $ performRequestTest agent
     threadDelay 100_000
-    throwTo reqThread Err
+    --throwTo reqThread Err
     threadDelay 60_000_000
     print "done"

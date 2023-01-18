@@ -30,8 +30,8 @@ import Resumer
 import Types
 import UnliftIO (bracketOnError, throwIO)
 
+import Agent
 import Data.Coerce
-import Extras
 import Foreign (touchForeignPtr)
 
 C.context (C.baseCtx <> C.funCtx <> C.fptrCtx <> C.bsCtx <> curlCtx)
@@ -53,14 +53,14 @@ performRequest :: AgentHandle -> RequestHandler -> IO (Response Body)
 performRequest agent ci@RequestHandler{..} = do
     atomically . writeTQueue agent.msgQueue $ Execute ci
     takeMVar completedResponse
-    !code <- withCurlEasy easy \(!easyPtr) ->
+    code <- withCurlEasy easy \easyPtr ->
         [C.block|long {
             long http_code = 0;
             curl_easy_getinfo($(CURL* easyPtr), CURLINFO_RESPONSE_CODE, &http_code);
             return http_code;
         }|]
     touchForeignPtr $ coerce easy
-    pure $! Response{info = HttpParts{statusCode = fromIntegral code, headers = []}, body = BodyChan responseBodyChan}
+    pure $! Response{info = HttpParts{statusCode = fromIntegral code, headers = []}, body = Reader responseBodyChan Nothing}
 
 collectBody :: AgentHandle -> RequestHandler -> IO BSL.ByteString
 collectBody agent handler = do
@@ -98,4 +98,4 @@ performRequestBS agent request =
         \handler -> do
             response <- performRequest agent handler
             bsBody <- collectBody agent handler
-            pure $ response{body = bsBody}
+            pure $ response{Response.body = bsBody}

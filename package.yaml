@@ -41,6 +41,8 @@ dependencies:
   - time
   - stm-chans
   - async
+  - mutable-containers
+  - vector
 
 ghc-options:
   - -Wall
@@ -50,6 +52,9 @@ include-dirs:
   - cbits
 
 language: GHC2021
+
+default-extensions:
+ - OverloadedStrings
 
 extra-libraries:
   - curl

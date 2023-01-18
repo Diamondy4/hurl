@@ -1,23 +1,33 @@
+{-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE TypeFamilies #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 module Types where
 
-import Control.Concurrent
-import Control.Concurrent.Async
-import Control.Concurrent.STM (STM, TMVar)
+import Control.Concurrent.STM (TMVar)
+import Control.Concurrent.STM.TBMQueue
 import Control.Concurrent.STM.TQueue
-import Data.HashMap.Strict
+import Data.ByteString
 import Data.Hashable (Hashable)
-import Data.IORef
-import Event qualified as InternalEvent
-import Foreign
+import Data.Vector.Generic qualified as VG
+import Data.Vector.Generic.Mutable qualified as VGM
+import Data.Vector.Hashtables qualified as VHT
+import Data.Vector.Mutable qualified as VM
+import Data.Vector.Primitive qualified as VP
+import Data.Vector.Unboxed qualified as VU
+import Data.Vector.Unboxed.Base qualified as VU
+import Data.Vector.Unboxed.Mutable qualified as VUM
+import Foreign (Ptr)
 import Foreign.C.Types
 import GHC.Event
+import GHC.Generics
 import Internal.Raw
-import Request
 import System.Posix.Types (Fd (..))
+
+type HashTable k v = VHT.Dictionary (VHT.PrimState IO) VUM.MVector k VM.MVector v
 
 data CurlTimerFunEnv = CurlTimerFunEnv
     { timerKey :: TMVar TimeoutKey
@@ -26,7 +36,7 @@ data CurlTimerFunEnv = CurlTimerFunEnv
     }
 
 data CurlSocketFunEnv = CurlSocketFunEnv
-    { fdMapRef :: IORef (HashMap Fd FdState)
+    { fdMap :: !(HashTable Fd FdState)
     , eventManager :: EventManager
     , socketActionQueue :: TQueue SocketActionRequest
     }
@@ -51,37 +61,39 @@ data CurlSocketEvent = CurlSocketEvent
     }
     deriving (Show)
 
-data AgentMessage where
-    Close :: AgentMessage
-    Execute :: RequestHandler -> AgentMessage
-    UnpauseRead :: RequestId -> AgentMessage
-    UnpauseWrite :: RequestId -> AgentMessage
-    CancelRequest :: RequestId -> AgentMessage
-
 data SocketActionRequest = SocketActionRequest
     { fd :: Fd
     , flags :: CurlEventsOnSocket
     }
-    deriving (Eq, Show)
-
-data AgentContext = AgentContext
-    { multi :: !CurlMulti
-    , eventManager :: !EventManager
-    , msgQueue :: !(TQueue AgentMessage)
-    , socketActionQueue :: !(TQueue SocketActionRequest)
-    , requestsRef :: !(IORef (HashMap RequestId RequestHandler))
-    , fdMapRef :: !(IORef (HashMap Fd FdState))
-    , timerWaker :: !(TMVar ())
-    , msgQueueAlive :: !(StablePtr (TQueue AgentMessage))
-    }
-
-data AgentHandle = AgentHandle
-    { msgQueue :: !(TQueue AgentMessage)
-    , agentThreadId :: !(Async ())
-    , agent :: !AgentContext
-    }
+    deriving (Eq, Ord, Show, Generic)
 
 data LoopBreaker = Continue | Stop
+    deriving (Eq, Show, Generic)
 
 deriving instance Hashable CInt
 deriving instance Hashable Fd
+
+newtype instance VU.MVector s Fd = MV_Fd (VP.MVector s CInt)
+newtype instance VU.Vector Fd = V_Fd (VP.Vector CInt)
+
+deriving via (VU.UnboxViaPrim CInt) instance (VGM.MVector VU.MVector Fd)
+deriving via (VU.UnboxViaPrim CInt) instance (VG.Vector VU.Vector Fd)
+
+instance VU.Unbox Fd
+
+data Body where
+    Empty :: Body
+    Buffer :: !ByteString -> Body
+    Reader :: !(TBMQueue ByteString) -> !(Maybe Int) -> Body
+    deriving (Generic)
+
+data HTTPMethod = Get | Head | Post | Put | Delete
+    deriving (Generic)
+
+httpMethodToBS :: HTTPMethod -> ByteString
+httpMethodToBS = \case
+    Get -> "GET"
+    Head -> "HEAD"
+    Post -> "POST"
+    Put -> "PUT"
+    Delete -> "DELETE"
