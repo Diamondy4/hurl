@@ -10,24 +10,26 @@
 
 module Main where
 
-import Control.Concurrent
 import PyFCustom
 
 import Agent (AgentHandle)
 import Agent qualified
-import Control.Exception
-import Control.Monad
-import Request
+import Data.Atomics.Counter
+import Request  
 import Simple
+import System.TimeIt
 import Types
+import UnliftIO
+import UnliftIO.Concurrent (threadDelay)
 
 performRequestTest :: AgentHandle -> IO ()
 performRequestTest agent = do
     let headers = ["Transfer-Encoding: chunked", "Accept: application/json", "Content-Type: application/json", "charset: utf-8"]
         body = Buffer [cFmt|{ "Its" : "Alive" }|]
-        req = Request{host = "https://eoqs3gfexu6bl9.m.pipedream.net", timeoutMS = 0, body, headers = headers, method = Post}
-    response <- performRequestBS agent req
+        req = Request{host = "https://example.com", timeoutMS = 400, body, headers = headers, method = Post}
+    !response <- timeIt $ httpLBS agent req
     print response
+    pure ()
 
 data Err = Err deriving (Show)
 instance Exception Err
@@ -37,13 +39,16 @@ main = do
     initCurl
     agent <- Agent.spawnAgent
     print "initialized"
-    --reqThread <- forkIO $ performRequestTest agent
-    void . forkIO $ performRequestTest agent
-    void . forkIO $ performRequestTest agent
-    void . forkIO $ performRequestTest agent
-    void . forkIO $ performRequestTest agent
-    --void . forkIO $ performRequestTest agent
-    threadDelay 100_000
-    --throwTo reqThread Err
+    -- reqThread <- forkIO $ performRequestTest agent
+    successCounter <- newCounter 0
+    a1 <- async $ forConcurrently_ [1 .. 10] \_i -> do
+        performRequestTest agent
+        incrCounter_ 1 successCounter
+    a2 <- async $ forConcurrently_ [1 .. 1] \_i -> do
+        performRequestTest agent
+        incrCounter_ 1 successCounter
+    _ <- waitBoth a1 a2
+    print =<< readCounter successCounter
+    -- throwTo reqThread Err
     threadDelay 60_000_000
     print "done"

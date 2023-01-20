@@ -43,6 +43,8 @@ dependencies:
   - async
   - mutable-containers
   - vector
+  - stm-containers
+  - atomic-primops
 
 ghc-options:
   - -Wall
@@ -72,9 +74,10 @@ executables:
     ghc-options:
       - -threaded
       - -rtsopts
-      - -with-rtsopts=-N
+      - '"-with-rtsopts=-N"'
     dependencies:
       - hurl
+      - timeit
 tests:
   hurl-test:
     main: Spec.hs

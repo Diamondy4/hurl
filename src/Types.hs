@@ -22,17 +22,23 @@ import Data.Vector.Unboxed.Base qualified as VU
 import Data.Vector.Unboxed.Mutable qualified as VUM
 import Foreign (Ptr)
 import Foreign.C.Types
-import GHC.Event
+import GHC.Event qualified as GHCEvent
 import GHC.Generics
 import Internal.Raw
 import System.Posix.Types (Fd (..))
 
 type HashTable k v = VHT.Dictionary (VHT.PrimState IO) VUM.MVector k VM.MVector v
 
+data EventManager = EventManager
+    { eventManager :: GHCEvent.EventManager
+    , socketActionQueue :: !(TQueue SocketActionRequest)
+    , fdMap :: !(HashTable Fd FdState)
+    }
+
 data CurlTimerFunEnv = CurlTimerFunEnv
-    { timerKey :: TMVar TimeoutKey
+    { timerKey :: TMVar GHCEvent.TimeoutKey
     , timerWaiter :: TMVar ()
-    , timerManager :: TimerManager
+    , timerManager :: GHCEvent.TimerManager
     }
 
 data CurlSocketFunEnv = CurlSocketFunEnv
@@ -42,8 +48,8 @@ data CurlSocketFunEnv = CurlSocketFunEnv
     }
 
 data FdState = FdState
-    { registeredEvents :: !Event
-    , fdKeys :: ![FdKey]
+    { registeredEvents :: !GHCEvent.Event
+    , fdKeys :: ![GHCEvent.FdKey]
     }
     deriving (Show)
 
@@ -55,15 +61,15 @@ instance Semigroup FdState where
             }
 
 data CurlSocketEvent = CurlSocketEvent
-    { socket :: Fd
-    , status :: CurlSocketEventRequest
+    { socket :: !Fd
+    , status :: !CurlSocketEventRequest
     , socketDataPtr :: Ptr ()
     }
     deriving (Show)
 
 data SocketActionRequest = SocketActionRequest
-    { fd :: Fd
-    , flags :: CurlEventsOnSocket
+    { fd :: !Fd
+    , flags :: !CurlEventsOnSocket
     }
     deriving (Eq, Ord, Show, Generic)
 

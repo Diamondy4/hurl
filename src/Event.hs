@@ -1,11 +1,17 @@
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DerivingStrategies #-}
+
 module Event where
 
 import Data.Bits
+import Data.Hashable (Hashable)
 import GHC.Event qualified as GHCEvent
+import GHC.Generics
 import Unsafe.Coerce
 
 newtype Event = Event Int
-    deriving (Eq)
+    deriving (Eq, Generic)
+    deriving anyclass (Hashable)
 
 eventIs :: Event -> Event -> Bool
 eventIs (Event a) (Event b) = a .&. b /= 0

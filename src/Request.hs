@@ -11,7 +11,6 @@
 module Request where
 
 import Control.Concurrent.MVar
-import Control.Concurrent.STM.TBMQueue (TBMQueue)
 import Control.Monad
 import Data.ByteString (ByteString)
 import Data.Coerce
@@ -26,7 +25,7 @@ import Foreign.ForeignPtr.Unsafe
 import Foreign.Ptr
 import GHC.Generics
 import Internal.Raw
-import Resumer (ChanStatusVar)
+import Internal.Raw.SimpleString (SimpleStringPtr)
 import Types
 
 type CurlEasyReadFunction = Ptr CChar -> CSize -> CSize -> Ptr () -> IO CSize
@@ -48,18 +47,11 @@ data RequestHandler = RequestHandler
     { easy :: !CurlEasy
     -- ^ Associated easy handle
     , requestHeaders :: !(Maybe CurlSlist)
-    , requestBody :: !Body
     -- ^ Request headers list
+    , requestBody :: !Body
     , doneRequest :: !(MVar CurlCode)
     -- ^ Request is done completely and removed from multi handle. Body is consumed and no more data recieved.
-    , completedResponse :: !(MVar ())
-    -- ^ Response is complete, response headers are recieved. Body can be still recieved later.
-    , responseBodyChan :: !(TBMQueue ByteString)
-    -- ^ Chan for response body.
-    , responseBodyStatus :: !ChanStatusVar
-    -- ^ Variable to pause response body writing.
-    , writeResponseBodyPtr :: !(FunPtr CurlEasyWriteFunction)
-    -- ^ Write function ptr, should be freed later.
+    , responseSimpleString :: !SimpleStringPtr
     }
     deriving (Generic)
 

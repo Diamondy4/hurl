@@ -35,8 +35,10 @@ library
       Internal.Raw
       Internal.Raw.Context
       Internal.Raw.Curl
+      Internal.Raw.SimpleString
       Internal.Raw.SocketEvents
       Internal.Slist
+      Poller
       PyFCustom
       Request
       Response
@@ -59,6 +61,7 @@ library
   build-depends:
       PyF
     , async
+    , atomic-primops
     , base >=4.7 && <5
     , bytestring
     , containers
@@ -71,6 +74,7 @@ library
     , primitive
     , stm
     , stm-chans
+    , stm-containers
     , stm-delay
     , template-haskell
     , text
@@ -90,7 +94,7 @@ executable hurl-exe
       app
   default-extensions:
       OverloadedStrings
-  ghc-options: -Wall -Wincomplete-patterns -threaded -rtsopts -with-rtsopts=-N
+  ghc-options: -Wall -Wincomplete-patterns -threaded -rtsopts "-with-rtsopts=-N"
   include-dirs:
       cbits
   extra-libraries:
@@ -100,6 +104,7 @@ executable hurl-exe
   build-depends:
       PyF
     , async
+    , atomic-primops
     , base >=4.7 && <5
     , bytestring
     , containers
@@ -113,10 +118,12 @@ executable hurl-exe
     , primitive
     , stm
     , stm-chans
+    , stm-containers
     , stm-delay
     , template-haskell
     , text
     , time
+    , timeit
     , unagi-chan
     , unliftio
     , unordered-containers
@@ -143,6 +150,7 @@ test-suite hurl-test
   build-depends:
       PyF
     , async
+    , atomic-primops
     , base >=4.7 && <5
     , bytestring
     , containers
@@ -156,6 +164,7 @@ test-suite hurl-test
     , primitive
     , stm
     , stm-chans
+    , stm-containers
     , stm-delay
     , template-haskell
     , text

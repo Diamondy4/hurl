@@ -5,39 +5,12 @@
 
 typedef struct curl_slist curl_slist_t;
 
-typedef struct hs_curl_response_data
+typedef struct simple_string
 {
-    int status_code;
-} hs_curl_response_data;
+    char *ptr;
+    size_t len;
+} simple_string;
 
-typedef struct hs_curl_easy_data
-{
-    HsStablePtr hs_mutex;
-    hs_curl_response_data *response_data;
-} hs_curl_easy_data;
+void init_simple_string(simple_string *s);
 
-typedef struct hs_curl_socketdata
-{
-    HsStablePtr hs_eventmanager;
-    CURLM *multi;
-} hs_curl_socketdata;
-
-typedef void hs_curl_timerdata;
-
-enum HttpRequestType
-{
-    GET,
-    POST
-};
-
-typedef enum body_type
-{
-    EMPTY,
-    WRITER_FUNPTR
-} body_type;
-
-typedef struct body_data
-{
-    body_type body_type;
-    curl_write_callback cb;
-} body_data;
+size_t simple_string_writefunc(void *ptr, size_t size, size_t nmemb, simple_string *s);
