@@ -1,0 +1,3 @@
+[submodule "third-party/include/waitfree-mpsc-queue"]
+	path = third-party/include/waitfree-mpsc-queue
+	url = https://github.com/dbittman/waitfree-mpsc-queue.git

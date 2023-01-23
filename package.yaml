@@ -52,6 +52,13 @@ ghc-options:
 
 include-dirs:
   - cbits
+  - third-party
+
+c-sources:
+  - "third-party/include/waitfree-mpsc-queue/mpsc.c"
+  - "cbits/curl_uv.c"
+  - "cbits/message_chan.c"
+  - "cbits/simple_string.c"
 
 language: GHC2021
 
@@ -60,6 +67,7 @@ default-extensions:
 
 extra-libraries:
   - curl
+  - uv
 
 build-tools:
   - c2hs

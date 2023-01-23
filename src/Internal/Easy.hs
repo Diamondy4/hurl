@@ -18,28 +18,28 @@ import Data.Foldable
 import Foreign
 import Foreign.C.Types
 import Internal.Raw
+import Internal.Raw.Extras (mkEasyData, withEasyData)
 import Internal.Raw.SimpleString
 import Internal.Slist
 import Language.C.Inline qualified as C
 import Request
 import Types
 
-C.context (C.baseCtx <> C.funCtx <> C.fptrCtx <> C.bsCtx <> curlCtx)
+C.context (C.baseCtx <> C.funCtx <> C.fptrCtx <> C.bsCtx <> localCtx)
 
 C.include "<string.h>"
 C.include "<stdlib.h>"
 
 C.include "<curl/curl.h>"
 C.include "HsFFI.h"
-C.include "curl_hs_c.h"
-C.include "curl_hs_c.c"
 
-defaultChunkCount :: Int
-defaultChunkCount = 4
+C.include "simple_string.h"
+C.include "extras.h"
 
 initRequest :: Request -> IO RequestHandler
 initRequest Request{..} = do
-    doneRequest <- newEmptyMVar @CurlCode
+    doneRequest <- newEmptyMVar @()
+    easyData <- mkEasyData doneRequest
 
     easyPtr <-
         [C.block|CURL* {
@@ -63,13 +63,16 @@ initRequest Request{..} = do
         }
     }|]
     easy <- coerce $ newForeignPtr cleanupCurlEasy easyPtr
-
     responseSimpleString <- mallocForeignPtr @SimpleString
 
-    [C.block|void {
-        init_simple_string($fptr-ptr:(simple_string* responseSimpleString));
+    withEasyData easyData \easyDataPtr ->
+        [C.block|void {
+        curl_easy_setopt($(CURL* easyPtr), CURLOPT_PRIVATE, $(hs_easy_data_t* easyDataPtr));
+        
+        // Request body
+        init_simple_string($fptr-ptr:(simple_string_t* responseSimpleString));
         curl_easy_setopt($(CURL* easyPtr), CURLOPT_WRITEFUNCTION, simple_string_writefunc);
-        curl_easy_setopt($(CURL* easyPtr), CURLOPT_WRITEDATA, $fptr-ptr:(simple_string* responseSimpleString) );
+        curl_easy_setopt($(CURL* easyPtr), CURLOPT_WRITEDATA, $fptr-ptr:(simple_string_t* responseSimpleString) );
     }|]
 
     case body of
@@ -84,7 +87,6 @@ initRequest Request{..} = do
             curl_easy_setopt($(CURL* easyPtr), CURLOPT_POSTFIELDS, $bs-ptr:bs);
             curl_easy_setopt($(CURL* easyPtr), CURLOPT_POSTFIELDSIZE, (long)$bs-len:bs);
         }|]
-        Reader _chan _size -> pure () -- TODO: support streaming request body
     slist <-
         if null headers
             then do
@@ -108,6 +110,7 @@ initRequest Request{..} = do
     pure
         RequestHandler
             { easy
+            , easyData
             , requestBody = body
             , doneRequest
             , requestHeaders = slist
@@ -123,14 +126,6 @@ takeChunk len (chunk : xs) =
 
 cleanupCurlEasy :: FunPtr (Ptr CurlEasy -> IO ())
 cleanupCurlEasy = [C.funPtr| void free_curl_easy(CURL* ptr){ curl_easy_cleanup(ptr); } |]
-
--- TODO: error handling
-unpauseRead :: Ptr CurlEasy -> IO ()
-unpauseRead easy = [C.block|void { curl_easy_pause($(CURL* easy), CURLPAUSE_RECV_CONT); }|]
-
--- TODO: error handling
-unpauseWrite :: Ptr CurlEasy -> IO ()
-unpauseWrite easy = [C.block|void { curl_easy_pause($(CURL* easy), CURLPAUSE_SEND_CONT); }|]
 
 isBodyEmpty :: Body -> Bool
 isBodyEmpty = \case

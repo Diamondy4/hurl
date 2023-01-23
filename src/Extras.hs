@@ -5,7 +5,6 @@
 
 module Extras where
 
-import Control.Concurrent.STM
 import Control.Exception qualified as EUnsafe
 import Data.ByteString
 import Data.ByteString qualified as BS
@@ -19,23 +18,13 @@ import Internal.Raw.SimpleString
 import Language.C.Inline qualified as C
 import UnliftIO
 
-C.context (C.baseCtx <> C.funCtx <> C.fptrCtx <> C.bsCtx <> curlCtx)
+C.context (C.baseCtx <> C.funCtx <> C.fptrCtx <> C.bsCtx <> localCtx)
 
-C.include "curl_hs_c.h"
+C.include "simple_string.h"
 C.include "<stdlib.h>"
 
 cPrint :: CString -> IO ()
 cPrint ptr = BS.putStr =<< BS.packCString ptr
-
-{- | Non-blocking write of a new value to a 'TMVar'
- Puts if empty. Replaces if populated.
--}
-
--- writeTMVar :: TMVar a -> a -> STM ()
--- writeTMVar t new = tryTakeTMVar t >> putTMVar t new
-
-flushTQueueWait :: TQueue a -> STM [a]
-flushTQueueWait t = peekTQueue t *> flushTQueue t
 
 simpleStringToBS :: SimpleStringPtr -> IO ByteString
 simpleStringToBS simpleStringPtr = do

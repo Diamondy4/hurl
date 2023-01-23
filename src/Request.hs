@@ -27,6 +27,7 @@ import GHC.Generics
 import Internal.Raw
 import Internal.Raw.SimpleString (SimpleStringPtr)
 import Types
+import Internal.Raw.Extras
 
 type CurlEasyReadFunction = Ptr CChar -> CSize -> CSize -> Ptr () -> IO CSize
 
@@ -45,11 +46,12 @@ data Request = Request
 -- TODO: support streaming request body
 data RequestHandler = RequestHandler
     { easy :: !CurlEasy
+    , easyData :: !EasyData
+    , doneRequest :: !(MVar ())
     -- ^ Associated easy handle
     , requestHeaders :: !(Maybe CurlSlist)
     -- ^ Request headers list
     , requestBody :: !Body
-    , doneRequest :: !(MVar CurlCode)
     -- ^ Request is done completely and removed from multi handle. Body is consumed and no more data recieved.
     , responseSimpleString :: !SimpleStringPtr
     }

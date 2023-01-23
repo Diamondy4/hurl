@@ -17,10 +17,10 @@ import Foreign
 import Internal.Raw
 import Language.C.Inline qualified as C
 
-C.context (C.baseCtx <> curlCtx)
+C.context (C.baseCtx <> localCtx)
 
 C.include "<curl/curl.h>"
-C.include "curl_hs_c.h"
+C.include "extras.h"
 
 toHeaderSlistCont :: [ByteString] -> ContT a IO (Maybe (Ptr CurlSlist))
 toHeaderSlistCont headers = do

@@ -27,22 +27,23 @@ source-repository head
 library
   exposed-modules:
       Agent
-      Event
       Extras
       Internal.Callbacks
       Internal.Easy
+      Internal.MPSC
       Internal.Multi
       Internal.Raw
+      Internal.Raw.Alloc
       Internal.Raw.Context
       Internal.Raw.Curl
+      Internal.Raw.Extras
+      Internal.Raw.MPSC
       Internal.Raw.SimpleString
-      Internal.Raw.SocketEvents
+      Internal.Raw.UV
       Internal.Slist
-      Poller
       PyFCustom
       Request
       Response
-      Resumer
       Simple
       Types
   other-modules:
@@ -54,8 +55,15 @@ library
   ghc-options: -Wall -Wincomplete-patterns
   include-dirs:
       cbits
+      third-party
+  c-sources:
+      third-party/include/waitfree-mpsc-queue/mpsc.c
+      cbits/curl_uv.c
+      cbits/message_chan.c
+      cbits/simple_string.c
   extra-libraries:
       curl
+      uv
   build-tools:
       c2hs
   build-depends:
@@ -97,8 +105,15 @@ executable hurl-exe
   ghc-options: -Wall -Wincomplete-patterns -threaded -rtsopts "-with-rtsopts=-N"
   include-dirs:
       cbits
+      third-party
+  c-sources:
+      third-party/include/waitfree-mpsc-queue/mpsc.c
+      cbits/curl_uv.c
+      cbits/message_chan.c
+      cbits/simple_string.c
   extra-libraries:
       curl
+      uv
   build-tools:
       c2hs
   build-depends:
@@ -143,8 +158,15 @@ test-suite hurl-test
   ghc-options: -Wall -Wincomplete-patterns -threaded -rtsopts -with-rtsopts=-N
   include-dirs:
       cbits
+      third-party
+  c-sources:
+      third-party/include/waitfree-mpsc-queue/mpsc.c
+      cbits/curl_uv.c
+      cbits/message_chan.c
+      cbits/simple_string.c
   extra-libraries:
       curl
+      uv
   build-tools:
       c2hs
   build-depends:

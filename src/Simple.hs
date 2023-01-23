@@ -10,20 +10,21 @@
 
 module Simple where
 
-import Control.Concurrent
 import Data.ByteString.Lazy qualified as BSL
 import Language.C.Inline qualified as C
 
 import Internal.Raw
 
 import Agent
-import Control.Concurrent.STM
+import Control.Concurrent (takeMVar)
 import Extras
 import Internal.Easy
+import Internal.Raw.Extras (getCurlCode)
+import Internal.Raw.MPSC (OuterMessage (Execute))
 import Request
 import Response
 
-C.context (C.baseCtx <> C.funCtx <> C.fptrCtx <> C.bsCtx <> curlCtx)
+C.context (C.baseCtx <> C.funCtx <> C.fptrCtx <> C.bsCtx <> localCtx)
 
 C.include "<string.h>"
 C.include "<stdlib.h>"
@@ -31,18 +32,18 @@ C.include "<stdlib.h>"
 C.include "<curl/curl.h>"
 C.include "HsFFI.h"
 
-C.include "curl_hs_c.h"
-
 initCurl :: IO ()
 initCurl = [C.block|void { curl_global_init(CURL_GLOBAL_DEFAULT); }|]
 
 performRequest :: AgentHandle -> RequestHandler -> IO (Either CurlCode (Response BSL.ByteString))
-performRequest agent reqHandler@RequestHandler{..} = do
-    atomically . writeTQueue agent.msgQueue $ Execute reqHandler
-    takeMVar doneRequest >>= \case
+performRequest agent reqHandler = withCurlEasy reqHandler.easy \easyPtr -> do
+    sendMessage agent.agentContext $ Execute easyPtr
+    print "message sent to agent"
+    takeMVar reqHandler.doneRequest
+    getCurlCode reqHandler.easyData >>= \case
         Ok -> do
             !responseBS <- simpleStringToBS reqHandler.responseSimpleString
-            code <- withCurlEasy easy \easyPtr ->
+            code <-
                 [C.block|long {
                      long http_code = 0;
                      curl_easy_getinfo($(CURL* easyPtr), CURLINFO_RESPONSE_CODE, &http_code);
