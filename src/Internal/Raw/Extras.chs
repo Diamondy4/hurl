@@ -14,10 +14,11 @@ mkEasyData waker = do
   (cap, _locked) <- threadCapability =<< myThreadId
   wakerSPtr <- newStablePtrPrimMVar waker
   easyDataFPtr <- mallocForeignPtrBytes {#sizeof hs_easy_data_t#}
-  withForeignPtr easyDataFPtr $ \ptr -> do
-     {#set hs_easy_data_t.done_request_mvar#} ptr (castStablePtrToPtr wakerSPtr)
-     {#set hs_easy_data_t.curl_code#} ptr 0
-     {#set hs_easy_data_t.capability#} ptr (fromIntegral cap)
+  withForeignPtr easyDataFPtr $ \easyDataPtr -> do
+     {#set hs_easy_data_t.done_request_mvar#} easyDataPtr (castStablePtrToPtr wakerSPtr)
+     {#set hs_easy_data_t.done_request#} easyDataPtr False
+     {#set hs_easy_data_t.curl_code#} easyDataPtr 0
+     {#set hs_easy_data_t.capability#} easyDataPtr (fromIntegral cap)
   pure $ EasyData easyDataFPtr
 
 getCurlCode :: EasyData -> IO CurlCode

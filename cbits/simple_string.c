@@ -1,8 +1,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include "simple_string.h"
-#include <assert.h>
-#include <stdio.h>
 
 // TODO: check malloc result
 void init_simple_string(simple_string_t *str) {
@@ -12,9 +10,6 @@ void init_simple_string(simple_string_t *str) {
 }
 
 size_t simple_string_writefunc(void *ptr, size_t size, size_t nmemb, simple_string_t *str) {
-    assert(ptr);
-    assert(str);
-    printf("writing response body\n");
     size_t new_len = str->len + size * nmemb;
     str->ptr = realloc(str->ptr, new_len + 1);
 

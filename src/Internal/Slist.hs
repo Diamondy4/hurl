@@ -16,6 +16,7 @@ import Data.Coerce
 import Foreign
 import Internal.Raw
 import Language.C.Inline qualified as C
+import qualified Language.C.Inline.Unsafe as CU
 
 C.context (C.baseCtx <> localCtx)
 
@@ -29,7 +30,7 @@ toHeaderSlistCont headers = do
   let headersCArrLen = fromIntegral headersCArrLen'
   ptr <-
     lift
-      [C.block| curl_slist_t* {
+      [CU.block| curl_slist_t* {
                 curl_slist_t* slist = NULL;
                 curl_slist_t* temp = NULL;
 

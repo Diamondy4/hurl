@@ -28,20 +28,19 @@ import Internal.Raw
 import Internal.Raw.SimpleString (SimpleStringPtr)
 import Types
 import Internal.Raw.Extras
-
-type CurlEasyReadFunction = Ptr CChar -> CSize -> CSize -> Ptr () -> IO CSize
-
-type CurlEasyWriteFunction = Ptr CChar -> CSize -> CSize -> Ptr () -> IO CSize
+import Control.DeepSeq
 
 -- | TODO async request body
 data Request = Request
     { host :: !ByteString
-    , timeoutMS :: !CLong
+    , timeoutMS :: !Int
+    , connectionTimeoutMS :: !Int
     , body :: !Body
     , method :: !HTTPMethod
     , headers :: ![ByteString]
     }
     deriving (Generic)
+    deriving anyclass (NFData)
 
 -- TODO: support streaming request body
 data RequestHandler = RequestHandler

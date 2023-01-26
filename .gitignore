@@ -4,3 +4,6 @@ dist-newstyle
 .DS_Store
 cabal.project.local
 .vscode/
+cmake*
+CMakeLists.txt
+.idea*

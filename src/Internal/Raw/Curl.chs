@@ -10,6 +10,8 @@
 module Internal.Raw.Curl where
 
 import Control.Exception (Exception)
+import Control.DeepSeq
+import GHC.Generics
 
 #include <curl/curl.h>
 
@@ -30,6 +32,8 @@ import Control.Exception (Exception)
 
 {# pointer *CURLMsg as CurlMultiMsgRaw newtype #}
 
-{# enum CURLcode as CurlCode {underscoreToCase} with prefix = "CURLE_" deriving (Eq, Ord, Show) #}
+{# enum CURLcode as CurlCode {underscoreToCase} with prefix = "CURLE_" deriving (Eq, Ord, Show, Generic) #}
 
 deriving anyclass instance Exception CurlCode
+deriving anyclass instance NFData CurlCode
+

@@ -52,7 +52,16 @@ library
       src
   default-extensions:
       OverloadedStrings
-  ghc-options: -Wall -Wincomplete-patterns
+      DerivingStrategies
+      DeriveAnyClass
+      LambdaCase
+      OverloadedRecordDot
+      BlockArguments
+      DerivingVia
+      DuplicateRecordFields
+      GeneralizedNewtypeDeriving
+      TypeFamilies
+  ghc-options: -Wall -Wincomplete-patterns -Wno-type-defaults
   include-dirs:
       cbits
       third-party
@@ -73,6 +82,7 @@ library
     , base >=4.7 && <5
     , bytestring
     , containers
+    , deepseq
     , flush-queue
     , hashable
     , inline-c
@@ -102,7 +112,16 @@ executable hurl-exe
       app
   default-extensions:
       OverloadedStrings
-  ghc-options: -Wall -Wincomplete-patterns -threaded -rtsopts "-with-rtsopts=-N"
+      DerivingStrategies
+      DeriveAnyClass
+      LambdaCase
+      OverloadedRecordDot
+      BlockArguments
+      DerivingVia
+      DuplicateRecordFields
+      GeneralizedNewtypeDeriving
+      TypeFamilies
+  ghc-options: -Wall -Wincomplete-patterns -Wno-type-defaults -threaded -rtsopts "-with-rtsopts=-N"
   include-dirs:
       cbits
       third-party
@@ -123,6 +142,7 @@ executable hurl-exe
     , base >=4.7 && <5
     , bytestring
     , containers
+    , deepseq
     , flush-queue
     , hashable
     , hurl
@@ -155,7 +175,16 @@ test-suite hurl-test
       test
   default-extensions:
       OverloadedStrings
-  ghc-options: -Wall -Wincomplete-patterns -threaded -rtsopts -with-rtsopts=-N
+      DerivingStrategies
+      DeriveAnyClass
+      LambdaCase
+      OverloadedRecordDot
+      BlockArguments
+      DerivingVia
+      DuplicateRecordFields
+      GeneralizedNewtypeDeriving
+      TypeFamilies
+  ghc-options: -Wall -Wincomplete-patterns -Wno-type-defaults -threaded -rtsopts -with-rtsopts=-N
   include-dirs:
       cbits
       third-party
@@ -176,8 +205,74 @@ test-suite hurl-test
     , base >=4.7 && <5
     , bytestring
     , containers
+    , deepseq
     , flush-queue
     , hashable
+    , hurl
+    , inline-c
+    , mtl
+    , mutable-containers
+    , parsers
+    , primitive
+    , stm
+    , stm-chans
+    , stm-containers
+    , stm-delay
+    , template-haskell
+    , text
+    , time
+    , unagi-chan
+    , unliftio
+    , unordered-containers
+    , vector
+    , vector-hashtables
+  default-language: GHC2021
+
+benchmark hurl-benchmark
+  type: exitcode-stdio-1.0
+  main-is: Main.hs
+  other-modules:
+      Paths_hurl
+  hs-source-dirs:
+      benchmark
+  default-extensions:
+      OverloadedStrings
+      DerivingStrategies
+      DeriveAnyClass
+      LambdaCase
+      OverloadedRecordDot
+      BlockArguments
+      DerivingVia
+      DuplicateRecordFields
+      GeneralizedNewtypeDeriving
+      TypeFamilies
+  ghc-options: -Wall -Wincomplete-patterns -Wno-type-defaults -threaded -rtsopts -with-rtsopts=-N
+  include-dirs:
+      cbits
+      third-party
+  c-sources:
+      third-party/include/waitfree-mpsc-queue/mpsc.c
+      cbits/curl_uv.c
+      cbits/message_chan.c
+      cbits/simple_string.c
+  extra-libraries:
+      curl
+      uv
+  build-tools:
+      c2hs
+  build-depends:
+      PyF
+    , async
+    , atomic-primops
+    , base >=4.7 && <5
+    , bytestring
+    , containers
+    , criterion
+    , deepseq
+    , flush-queue
+    , hashable
+    , http-client
+    , http-conduit
     , hurl
     , inline-c
     , mtl

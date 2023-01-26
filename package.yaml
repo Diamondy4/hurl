@@ -45,10 +45,14 @@ dependencies:
   - vector
   - stm-containers
   - atomic-primops
+  - deepseq
 
 ghc-options:
   - -Wall
   - -Wincomplete-patterns
+  - -Wno-type-defaults 
+  - -optc-O3
+  - -optc-ffast-math 
 
 include-dirs:
   - cbits
@@ -64,6 +68,15 @@ language: GHC2021
 
 default-extensions:
  - OverloadedStrings
+ - DerivingStrategies
+ - DeriveAnyClass
+ - LambdaCase
+ - OverloadedRecordDot
+ - BlockArguments
+ - DerivingVia
+ - DuplicateRecordFields
+ - GeneralizedNewtypeDeriving
+ - TypeFamilies
 
 extra-libraries:
   - curl
@@ -96,3 +109,19 @@ tests:
       - -with-rtsopts=-N
     dependencies:
       - hurl
+
+benchmarks:
+  hurl-benchmark:
+    main: Main.hs
+    source-dirs: benchmark
+    ghc-options:
+      - -threaded
+      - -rtsopts
+      - -with-rtsopts=-N
+    dependencies:
+      - hurl
+      - http-client
+      - http-conduit
+      - criterion
+      - unliftio
+      - async

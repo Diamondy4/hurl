@@ -16,13 +16,14 @@ import Language.C.Inline qualified as C
 import Internal.Raw
 
 import Agent
-import Control.Concurrent (takeMVar)
 import Extras
 import Internal.Easy
 import Internal.Raw.Extras (getCurlCode)
 import Internal.Raw.MPSC (OuterMessage (Execute))
 import Request
 import Response
+import UnliftIO
+import qualified Language.C.Inline.Unsafe as CU
 
 C.context (C.baseCtx <> C.funCtx <> C.fptrCtx <> C.bsCtx <> localCtx)
 
@@ -38,13 +39,12 @@ initCurl = [C.block|void { curl_global_init(CURL_GLOBAL_DEFAULT); }|]
 performRequest :: AgentHandle -> RequestHandler -> IO (Either CurlCode (Response BSL.ByteString))
 performRequest agent reqHandler = withCurlEasy reqHandler.easy \easyPtr -> do
     sendMessage agent.agentContext $ Execute easyPtr
-    print "message sent to agent"
-    takeMVar reqHandler.doneRequest
+    readMVar reqHandler.doneRequest
     getCurlCode reqHandler.easyData >>= \case
         Ok -> do
             !responseBS <- simpleStringToBS reqHandler.responseSimpleString
             code <-
-                [C.block|long {
+                [CU.block|long {
                      long http_code = 0;
                      curl_easy_getinfo($(CURL* easyPtr), CURLINFO_RESPONSE_CODE, &http_code);
                      return http_code;
@@ -53,6 +53,4 @@ performRequest agent reqHandler = withCurlEasy reqHandler.easy \easyPtr -> do
         err -> pure $ Left err
 
 httpLBS :: AgentHandle -> Request -> IO (Either CurlCode (Response BSL.ByteString))
-httpLBS agent request = do
-    handler <- initRequest request
-    performRequest agent handler
+httpLBS agent request = bracket (initRequest request) (cancelRequest agent.agentContext) (performRequest agent)

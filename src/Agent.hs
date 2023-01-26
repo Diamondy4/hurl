@@ -16,8 +16,10 @@ module Agent where
 
 import Control.Concurrent.Async (Async)
 import Control.Concurrent.Async qualified as Async
+import Control.Concurrent.MVar
 import Control.Exception
 import Control.Monad (unless)
+import Foreign.Ptr
 import GHC.Generics
 import Internal.MPSC
 import Internal.Multi
@@ -25,8 +27,10 @@ import Internal.Raw
 import Internal.Raw.MPSC
 import Internal.Raw.UV
 import Language.C.Inline qualified as C
+import Language.C.Inline.Unsafe qualified as CU
 import PyF
 import Request
+import Types
 
 C.context (C.baseCtx <> C.funCtx <> C.fptrCtx <> C.bsCtx <> localCtx)
 
@@ -41,11 +45,10 @@ C.include "curl_uv.h"
 C.include "message_chan.h"
 C.include "include/waitfree-mpsc-queue/mpscq.h"
 
-
 data AgentContext = AgentContext
     { uvLoop :: !UVLoop
     , uvAsync :: !UVAsync
-    , multi :: !CurlMulti
+    , multi :: !(Ptr CurlMulti)
     , msgQueue :: !MPSCQ
     }
     deriving (Generic)
@@ -56,9 +59,9 @@ data AgentHandle = AgentHandle
     }
     deriving (Generic)
 
-spawnAgent :: IO AgentHandle
-spawnAgent = do
-    multi <- initCurlMulti
+spawnAgent :: AgentConfig -> IO AgentHandle
+spawnAgent config = do
+    multi <- initCurlMulti config
 
     agentContext <- Agent.new multi
 
@@ -66,31 +69,30 @@ spawnAgent = do
         Agent.run agentContext `catch` \(ex :: SomeException) -> print [fmt|agent died with exception {show ex}|]
     pure AgentHandle{agentThreadId, agentContext}
 
-new :: CurlMulti -> IO AgentContext
-new multi = withCurlMulti multi \multiPtr -> do
+new :: Ptr CurlMulti -> IO AgentContext
+new multiPtr = do
     msgQueue <- initMPSCQ 10000
-    uvLoopPtr <- [C.exp| uv_loop_t* { uv_default_loop() } |]
+    uvLoopPtr <-
+        [C.block| uv_loop_t* { 
+        uv_loop_t *loop = malloc(sizeof(uv_loop_t));
+        uv_loop_init(loop);
+        return loop;
+    }|]
     uvAsyncPtr <- withMPSCQ msgQueue \mpscqPtr ->
         [C.block|uv_async_t* {
-        printf("binding uv curl\n");
         bind_uv_curl_multi($(uv_loop_t* uvLoopPtr), $(CURLM* multiPtr));
-        printf("init check messages\n");
         uv_async_t* uv_async = init_async_check_messages($(uv_loop_t* uvLoopPtr), $(mpsc_t* mpscqPtr), $(CURLM* multiPtr));
         return uv_async;
     }
     |]
-    print uvLoopPtr
-    print uvAsyncPtr
-    pure $ AgentContext{uvAsync = UVAsync uvAsyncPtr, uvLoop = UVLoop uvLoopPtr, ..}
+    pure $ AgentContext{uvAsync = UVAsync uvAsyncPtr, uvLoop = UVLoop uvLoopPtr, multi = multiPtr, ..}
 
 run :: AgentContext -> IO ()
 run ctx = do
-    print "letsStart"
     let UVLoop uvLoopPtr = ctx.uvLoop
     [C.block|void {
         uv_run($(uv_loop_t* uvLoopPtr), UV_RUN_DEFAULT);
     }|]
-    print "isItStop?"
 
 data QueueFull = QueueFull deriving (Show, Exception)
 
@@ -99,7 +101,7 @@ sendMessage ctx outerMessage = do
     InternalOuterMessage msgPtr <- toInnerOuterMessage outerMessage
     let UVAsync asyncPtr = ctx.uvAsync
     isEnqueued <- withMPSCQ ctx.msgQueue \mpscPtr ->
-        [C.block|bool {
+        [CU.block|bool {
         bool isEnqueued = mpscq_enqueue($(mpsc_t* mpscPtr), $(outer_message_t* msgPtr));
         if (isEnqueued) {
             uv_async_send($(uv_async_t* asyncPtr));
@@ -112,3 +114,4 @@ sendMessage ctx outerMessage = do
 cancelRequest :: AgentContext -> RequestHandler -> IO ()
 cancelRequest ctx reqHandler = withCurlEasy reqHandler.easy \easyPtr -> do
     sendMessage ctx $ CancelRequest easyPtr
+    readMVar reqHandler.doneRequest

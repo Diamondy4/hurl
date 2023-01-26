@@ -24,6 +24,7 @@ import Internal.Slist
 import Language.C.Inline qualified as C
 import Request
 import Types
+import qualified Language.C.Inline.Unsafe as CU
 
 C.context (C.baseCtx <> C.funCtx <> C.fptrCtx <> C.bsCtx <> localCtx)
 
@@ -41,8 +42,10 @@ initRequest Request{..} = do
     doneRequest <- newEmptyMVar @()
     easyData <- mkEasyData doneRequest
 
+    let timeoutMS' = fromIntegral timeoutMS
+        connectionTimeoutMS' = fromIntegral connectionTimeoutMS
     easyPtr <-
-        [C.block|CURL* {
+        [CU.block|CURL* {
         CURL *easy;
         easy = curl_easy_init();
         if(easy) {
@@ -51,7 +54,8 @@ initRequest Request{..} = do
           curl_easy_setopt(easy, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_2_0);
           curl_easy_setopt(easy, CURLOPT_PIPEWAIT, 1L);
 
-          curl_easy_setopt(easy, CURLOPT_TIMEOUT_MS, $(long timeoutMS));
+          curl_easy_setopt(easy, CURLOPT_TIMEOUT_MS, $(long timeoutMS'));
+          curl_easy_setopt(easy, CURLOPT_CONNECTTIMEOUT_MS, $(long connectionTimeoutMS'));
 
           curl_easy_setopt(easy, CURLOPT_ACCEPT_ENCODING, "");
 
@@ -66,7 +70,7 @@ initRequest Request{..} = do
     responseSimpleString <- mallocForeignPtr @SimpleString
 
     withEasyData easyData \easyDataPtr ->
-        [C.block|void {
+        [CU.block|void {
         curl_easy_setopt($(CURL* easyPtr), CURLOPT_PRIVATE, $(hs_easy_data_t* easyDataPtr));
         
         // Request body
@@ -77,13 +81,13 @@ initRequest Request{..} = do
 
     case body of
         Empty ->
-            [C.block|void {
+            [CU.block|void {
             curl_easy_setopt($(CURL* easyPtr), CURLOPT_POSTFIELDS, "");
             curl_easy_setopt($(CURL* easyPtr), CURLOPT_POSTFIELDSIZE, 0L);
         }|]
         Buffer bs ->
             -- Request body is stored in its RequestHandler instance, thus it should outlive the use.
-            [C.block|void {
+            [CU.block|void {
             curl_easy_setopt($(CURL* easyPtr), CURLOPT_POSTFIELDS, $bs-ptr:bs);
             curl_easy_setopt($(CURL* easyPtr), CURLOPT_POSTFIELDSIZE, (long)$bs-len:bs);
         }|]
@@ -93,17 +97,17 @@ initRequest Request{..} = do
                 slist' <- toHeaderSlist headers
                 -- TODO: throw exception if failed to make headers
                 for_ slist' \slist -> withCurlSlist slist \slistPtr ->
-                    [C.block|void { curl_easy_setopt($(CURL* easyPtr), CURLOPT_HTTPHEADER, $(curl_slist_t* slistPtr)); }|]
+                    [CU.block|void { curl_easy_setopt($(CURL* easyPtr), CURLOPT_HTTPHEADER, $(curl_slist_t* slistPtr)); }|]
                 pure slist'
             else pure Nothing
 
     case method of
-        Get -> [C.block|void { curl_easy_setopt($(CURL* easyPtr), CURLOPT_HTTPGET, 1L); }|]
-        Head -> [C.block|void { curl_easy_setopt($(CURL* easyPtr), CURLOPT_NOBODY, 1L); }|]
-        Post -> [C.block|void { curl_easy_setopt($(CURL* easyPtr), CURLOPT_POST, 1L); }|]
+        Get -> [CU.block|void { curl_easy_setopt($(CURL* easyPtr), CURLOPT_HTTPGET, 1L); }|]
+        Head -> [CU.block|void { curl_easy_setopt($(CURL* easyPtr), CURLOPT_NOBODY, 1L); }|]
+        Post -> [CU.block|void { curl_easy_setopt($(CURL* easyPtr), CURLOPT_POST, 1L); }|]
         _ -> do
             let methodBS = httpMethodToBS method
-            [C.block|void {
+            [CU.block|void {
                 curl_easy_setopt($(CURL* easyPtr), CURLOPT_CUSTOMREQUEST, $bs-cstr:methodBS);
             }|]
 
