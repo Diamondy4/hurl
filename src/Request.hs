@@ -11,6 +11,7 @@
 module Request where
 
 import Control.Concurrent.MVar
+import Control.DeepSeq
 import Control.Monad
 import Data.ByteString (ByteString)
 import Data.Coerce
@@ -20,24 +21,30 @@ import Data.Vector.Generic.Mutable qualified as VM
 import Data.Vector.Primitive qualified as VP
 import Data.Vector.Unboxed qualified as VU
 import Data.Vector.Unboxed.Base qualified as VU
-import Foreign.C.Types
 import Foreign.ForeignPtr.Unsafe
 import Foreign.Ptr
 import GHC.Generics
 import Internal.Raw
+import Internal.Raw.Extras
 import Internal.Raw.SimpleString (SimpleStringPtr)
 import Types
-import Internal.Raw.Extras
-import Control.DeepSeq
 
 -- | TODO async request body
 data Request = Request
     { host :: !ByteString
     , timeoutMS :: !Int
     , connectionTimeoutMS :: !Int
+    , lowSpeedLimit :: !LowSpeedLimit
     , body :: !Body
     , method :: !HTTPMethod
     , headers :: ![ByteString]
+    }
+    deriving (Generic)
+    deriving anyclass (NFData)
+
+data LowSpeedLimit = LowSpeedLimit
+    { lowSpeed :: !Int
+    , timeout :: !Int
     }
     deriving (Generic)
     deriving anyclass (NFData)

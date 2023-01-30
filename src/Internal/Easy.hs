@@ -44,6 +44,8 @@ initRequest Request{..} = do
 
     let timeoutMS' = fromIntegral timeoutMS
         connectionTimeoutMS' = fromIntegral connectionTimeoutMS
+        lowSpeedLimit' = fromIntegral lowSpeedLimit.lowSpeed
+        lowSpeedTimeout' = fromIntegral lowSpeedLimit.timeout
     easyPtr <-
         [CU.block|CURL* {
         CURL *easy;
@@ -56,6 +58,8 @@ initRequest Request{..} = do
 
           curl_easy_setopt(easy, CURLOPT_TIMEOUT_MS, $(long timeoutMS'));
           curl_easy_setopt(easy, CURLOPT_CONNECTTIMEOUT_MS, $(long connectionTimeoutMS'));
+          curl_easy_setopt(easy, CURLOPT_LOW_SPEED_TIME, $(long lowSpeedTimeout'));
+          curl_easy_setopt(easy, CURLOPT_LOW_SPEED_LIMIT, $(long lowSpeedLimit'));
 
           curl_easy_setopt(easy, CURLOPT_ACCEPT_ENCODING, "");
 
@@ -91,15 +95,6 @@ initRequest Request{..} = do
             curl_easy_setopt($(CURL* easyPtr), CURLOPT_POSTFIELDS, $bs-ptr:bs);
             curl_easy_setopt($(CURL* easyPtr), CURLOPT_POSTFIELDSIZE, (long)$bs-len:bs);
         }|]
-    slist <-
-        if null headers
-            then do
-                slist' <- toHeaderSlist headers
-                -- TODO: throw exception if failed to make headers
-                for_ slist' \slist -> withCurlSlist slist \slistPtr ->
-                    [CU.block|void { curl_easy_setopt($(CURL* easyPtr), CURLOPT_HTTPHEADER, $(curl_slist_t* slistPtr)); }|]
-                pure slist'
-            else pure Nothing
 
     case method of
         Get -> [CU.block|void { curl_easy_setopt($(CURL* easyPtr), CURLOPT_HTTPGET, 1L); }|]
@@ -110,6 +105,16 @@ initRequest Request{..} = do
             [CU.block|void {
                 curl_easy_setopt($(CURL* easyPtr), CURLOPT_CUSTOMREQUEST, $bs-cstr:methodBS);
             }|]
+
+    slist <-
+        if not . null $ headers
+            then do
+                slist' <- toHeaderSlist headers
+                -- TODO: throw exception if failed to make headers
+                for_ slist' \slist -> withCurlSlist slist \slistPtr ->
+                    [CU.block|void { curl_easy_setopt($(CURL* easyPtr), CURLOPT_HTTPHEADER, $(curl_slist_t* slistPtr)); }|]
+                pure slist'
+            else pure Nothing
 
     pure
         RequestHandler

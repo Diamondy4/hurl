@@ -1,3 +1,4 @@
+#include <assert.h>
 #include "curl_uv.h"
 #include "extras.h"
 
@@ -80,7 +81,7 @@ int curl_timer_function(CURLM *multi, long timeout_ms, multi_context_t *multi_co
     if (timeout_ms < 0) {
         uv_timer_stop(&multi_context->timer);
     } else {
-        if(timeout_ms == 0){
+        if (timeout_ms == 0) {
             timeout_ms = 1;
         }
         uv_timer_start(&multi_context->timer, on_timeout, timeout_ms, 0);
@@ -98,10 +99,11 @@ int curl_socket_function(CURL *easy, curl_socket_t socket_fd, int action, multi_
         case CURL_POLL_IN:
         case CURL_POLL_OUT:
         case CURL_POLL_INOUT:
-            socket_context =
-                    socket_context_p ?
-                    socket_context_p :
-                    new_socket_context(multi_context, socket_fd);
+            if (socket_context_p && !uv_is_closing((uv_handle_t *) &socket_context_p->poll_handle)) {
+                socket_context = socket_context_p;
+            } else {
+                socket_context = new_socket_context(multi_context, socket_fd);
+            }
 
             curl_multi_assign(multi_context->multi, socket_fd, socket_context);
 
@@ -112,6 +114,9 @@ int curl_socket_function(CURL *easy, curl_socket_t socket_fd, int action, multi_
                 events |= UV_READABLE;
             }
 
+            assert(socket_context);
+            assert(&socket_context->poll_handle);
+            assert(socket_context->multi);
             uv_poll_start(&socket_context->poll_handle, events, socket_callback);
             break;
         case CURL_POLL_REMOVE:
@@ -130,10 +135,10 @@ int curl_socket_function(CURL *easy, curl_socket_t socket_fd, int action, multi_
 
 void bind_uv_curl_multi(uv_loop_t *loop, CURLM *multi) {
     multi_context_t *multi_context = malloc(sizeof(multi_context_t));
-    
+
     multi_context->multi = multi;
     multi_context->loop = loop;
-    
+
     uv_timer_init(loop, &multi_context->timer);
     multi_context->timer.data = multi;
 

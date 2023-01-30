@@ -61,7 +61,7 @@ library
       DuplicateRecordFields
       GeneralizedNewtypeDeriving
       TypeFamilies
-  ghc-options: -Wall -Wincomplete-patterns -Wno-type-defaults
+  ghc-options: -Wall -Wincomplete-patterns -Wno-type-defaults -optc-O3 -optc-ffast-math
   include-dirs:
       cbits
       third-party
@@ -121,7 +121,7 @@ executable hurl-exe
       DuplicateRecordFields
       GeneralizedNewtypeDeriving
       TypeFamilies
-  ghc-options: -Wall -Wincomplete-patterns -Wno-type-defaults -threaded -rtsopts "-with-rtsopts=-N"
+  ghc-options: -Wall -Wincomplete-patterns -Wno-type-defaults -optc-O3 -optc-ffast-math -threaded -rtsopts "-with-rtsopts=-N"
   include-dirs:
       cbits
       third-party
@@ -184,7 +184,7 @@ test-suite hurl-test
       DuplicateRecordFields
       GeneralizedNewtypeDeriving
       TypeFamilies
-  ghc-options: -Wall -Wincomplete-patterns -Wno-type-defaults -threaded -rtsopts -with-rtsopts=-N
+  ghc-options: -Wall -Wincomplete-patterns -Wno-type-defaults -optc-O3 -optc-ffast-math -threaded -rtsopts -with-rtsopts=-N
   include-dirs:
       cbits
       third-party
@@ -246,7 +246,7 @@ benchmark hurl-benchmark
       DuplicateRecordFields
       GeneralizedNewtypeDeriving
       TypeFamilies
-  ghc-options: -Wall -Wincomplete-patterns -Wno-type-defaults -threaded -rtsopts -with-rtsopts=-N
+  ghc-options: -Wall -Wincomplete-patterns -Wno-type-defaults -optc-O3 -optc-ffast-math -threaded -rtsopts -with-rtsopts=-N
   include-dirs:
       cbits
       third-party

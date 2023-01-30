@@ -13,7 +13,16 @@ performRequestTest :: AgentHandle -> IO ()
 performRequestTest agent = do
     let headers = ["Transfer-Encoding: chunked", "Accept: application/json", "Content-Type: application/json", "charset: utf-8"]
         body = Empty
-        req = Request{host = "https://example.com", timeoutMS = 0, connectionTimeoutMS = 400, body, headers = headers, method = Post}
+        req =
+            Request
+                { host = "https://example.com"
+                , timeoutMS = 0
+                , connectionTimeoutMS = 0
+                , lowSpeedLimit = LowSpeedLimit{lowSpeed = 1, timeout = 400}
+                , body
+                , headers = headers
+                , method = Post
+                }
     !_response <- timeIt $ httpLBS agent req
     -- print response
     pure ()
