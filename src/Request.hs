@@ -26,6 +26,7 @@ import Foreign.Ptr
 import GHC.Generics
 import Internal.Raw
 import Internal.Raw.Extras
+import Internal.Raw.Metrics (CurlMetricsContext)
 import Internal.Raw.SimpleString (SimpleStringPtr)
 import Types
 
@@ -58,8 +59,8 @@ data RequestHandler = RequestHandler
     , requestHeaders :: !(Maybe CurlSlist)
     -- ^ Request headers list
     , requestBody :: !Body
-    -- ^ Request is done completely and removed from multi handle. Body is consumed and no more data recieved.
     , responseSimpleString :: !SimpleStringPtr
+    , metricsContext :: !CurlMetricsContext
     }
     deriving (Generic)
 

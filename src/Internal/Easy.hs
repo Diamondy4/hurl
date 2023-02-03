@@ -17,14 +17,16 @@ import Data.Coerce
 import Data.Foldable
 import Foreign
 import Foreign.C.Types
+import Internal.Metrics
 import Internal.Raw
 import Internal.Raw.Extras (mkEasyData, withEasyData)
+import Internal.Raw.Metrics (CurlMetricsContext (CurlMetricsContext))
 import Internal.Raw.SimpleString
 import Internal.Slist
 import Language.C.Inline qualified as C
+import Language.C.Inline.Unsafe qualified as CU
 import Request
 import Types
-import qualified Language.C.Inline.Unsafe as CU
 
 C.context (C.baseCtx <> C.funCtx <> C.fptrCtx <> C.bsCtx <> localCtx)
 
@@ -36,6 +38,7 @@ C.include "HsFFI.h"
 
 C.include "simple_string.h"
 C.include "extras.h"
+C.include "curl_metrics.h"
 
 initRequest :: Request -> IO RequestHandler
 initRequest Request{..} = do
@@ -71,16 +74,28 @@ initRequest Request{..} = do
         }
     }|]
     easy <- coerce $ newForeignPtr cleanupCurlEasy easyPtr
+
     responseSimpleString <- mallocForeignPtr @SimpleString
+    metricsContext@(CurlMetricsContext metricsCtxFptr) <- initCurlMetrics easy
 
     withEasyData easyData \easyDataPtr ->
         [CU.block|void {
         curl_easy_setopt($(CURL* easyPtr), CURLOPT_PRIVATE, $(hs_easy_data_t* easyDataPtr));
+
+        curl_easy_setopt($(CURL* easyPtr), CURLOPT_XFERINFOFUNCTION, metric_xferinfofun_cb);
+        curl_easy_setopt($(CURL* easyPtr), CURLOPT_XFERINFODATA, $fptr-ptr:(curl_metrics_context_t* metricsCtxFptr));
+        curl_easy_setopt($(CURL* easyPtr), CURLOPT_NOPROGRESS, 0L);
         
         // Request body
         init_simple_string($fptr-ptr:(simple_string_t* responseSimpleString));
         curl_easy_setopt($(CURL* easyPtr), CURLOPT_WRITEFUNCTION, simple_string_writefunc);
         curl_easy_setopt($(CURL* easyPtr), CURLOPT_WRITEDATA, $fptr-ptr:(simple_string_t* responseSimpleString) );
+
+        curl_easy_setopt($(CURL* easyPtr), CURLOPT_IPRESOLVE, 1L);
+        curl_easy_setopt($(CURL* easyPtr), CURLOPT_SSL_VERIFYPEER, 0L);
+        curl_easy_setopt($(CURL* easyPtr), CURLOPT_SSL_VERIFYHOST, 0L);
+        curl_easy_setopt($(CURL* easyPtr), CURLOPT_TCP_FASTOPEN, 1L);
+        curl_easy_setopt($(CURL* easyPtr), CURLOPT_TCP_KEEPALIVE, 1L);
     }|]
 
     case body of
@@ -124,6 +139,7 @@ initRequest Request{..} = do
             , doneRequest
             , requestHeaders = slist
             , responseSimpleString
+            , metricsContext
             }
 
 takeChunk :: Int -> [ByteString] -> ([ByteString], ByteString)

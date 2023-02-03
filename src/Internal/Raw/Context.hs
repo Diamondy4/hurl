@@ -11,6 +11,7 @@ import Language.Haskell.TH qualified as TH
 import Internal.Raw.Curl
 import Internal.Raw.Extras
 import Internal.Raw.MPSC
+import Internal.Raw.Metrics
 import Internal.Raw.SimpleString
 import Internal.Raw.UV
 import Language.C.Inline.Context
@@ -38,6 +39,7 @@ extraTypesTable =
             , (C.TypeName "simple_string_t", [t|SimpleString|])
             , (C.TypeName "mpsc_t", [t|MPSCQ|])
             , (C.TypeName "outer_message_t", [t|InternalOuterMessage|])
+            , (C.TypeName "curl_metrics_context_t", [t|CurlMetricsContext|])
             ]
 
 libuvTypesTable :: Map.Map C.TypeSpecifier TH.TypeQ

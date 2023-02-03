@@ -46,3 +46,4 @@ bracketOnErrorWithError before after thing = withRunInIO $ \run -> EUnsafe.mask 
                 EUnsafe.try $ EUnsafe.uninterruptibleMask_ $ run $ after e1 x
             EUnsafe.throwIO e1
         Right y -> return y
+

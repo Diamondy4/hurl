@@ -3,7 +3,8 @@ module Internal.Raw.MPSC where
 import Internal.Raw.Alloc
 import Internal.Raw.Curl
 import Foreign 
-
+import GHC.Conc
+import Control.Concurrent.MVar
 
 #include "message_chan.h"
 #include <uv.h>
@@ -14,7 +15,7 @@ import Foreign
 
 {#pointer *outer_message_t as InternalOuterMessage newtype #}
 
-data OuterMessage = Execute (Ptr CurlEasy) | CancelRequest (Ptr CurlEasy)
+data OuterMessage = Execute (Ptr CurlEasy) | CancelRequest (Ptr CurlEasy) (MVar ())
 
 toInnerOuterMessage :: OuterMessage -> IO InternalOuterMessage
 toInnerOuterMessage msg = do
@@ -23,8 +24,13 @@ toInnerOuterMessage msg = do
     case msg of
         Execute easy -> do
             {#set outer_message_t.tag#} cMsg (fromIntegral . fromEnum $ InternalExecute)
-            {#set outer_message_t.easy#} cMsg (castPtr easy)
-        CancelRequest easy -> do
+            {#set outer_message_t.execute_payload.easy#} cMsg (castPtr easy)
+        CancelRequest easy waker -> do
+            (cap, _locked) <- threadCapability =<< myThreadId
+            wakerSPtr <- newStablePtrPrimMVar waker
             {#set outer_message_t.tag#} cMsg (fromIntegral . fromEnum $ InternalCancelRequest)
-            {#set outer_message_t.easy#} cMsg (castPtr easy)
+            {#set outer_message_t.cancel_payload.easy#} cMsg (castPtr easy)
+            {#set outer_message_t.cancel_payload.waker.mvar#} cMsg (castStablePtrToPtr wakerSPtr)
+            {#set outer_message_t.cancel_payload.waker.waked#} cMsg False
+            {#set outer_message_t.cancel_payload.waker.capability#} cMsg (fromIntegral cap)
     pure cMsg

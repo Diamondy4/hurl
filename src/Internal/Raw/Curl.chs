@@ -15,14 +15,11 @@ import GHC.Generics
 
 #include <curl/curl.h>
 
-#include "simple_string.h"
-
 {# context lib="curl" #}
 
 {# pointer *CURLM as CurlMulti foreign newtype #}
 
 {# pointer *CURL as CurlEasy foreign newtype #}
-
 
 {# pointer *curl_slist as CurlSlist foreign newtype #}
 

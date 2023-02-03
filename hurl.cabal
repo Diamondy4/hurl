@@ -30,6 +30,7 @@ library
       Extras
       Internal.Callbacks
       Internal.Easy
+      Internal.Metrics
       Internal.MPSC
       Internal.Multi
       Internal.Raw
@@ -37,6 +38,7 @@ library
       Internal.Raw.Context
       Internal.Raw.Curl
       Internal.Raw.Extras
+      Internal.Raw.Metrics
       Internal.Raw.MPSC
       Internal.Raw.SimpleString
       Internal.Raw.UV
@@ -63,13 +65,15 @@ library
       TypeFamilies
   ghc-options: -Wall -Wincomplete-patterns -Wno-type-defaults -optc-O3 -optc-ffast-math
   include-dirs:
-      cbits
-      third-party
+      ./cbits
+      ./third-party
   c-sources:
       third-party/include/waitfree-mpsc-queue/mpsc.c
       cbits/curl_uv.c
       cbits/message_chan.c
       cbits/simple_string.c
+      cbits/extras.c
+      cbits/curl_metrics.c
   extra-libraries:
       curl
       uv
@@ -90,6 +94,7 @@ library
     , mutable-containers
     , parsers
     , primitive
+    , resourcet
     , stm
     , stm-chans
     , stm-containers
@@ -123,13 +128,15 @@ executable hurl-exe
       TypeFamilies
   ghc-options: -Wall -Wincomplete-patterns -Wno-type-defaults -optc-O3 -optc-ffast-math -threaded -rtsopts "-with-rtsopts=-N"
   include-dirs:
-      cbits
-      third-party
+      ./cbits
+      ./third-party
   c-sources:
       third-party/include/waitfree-mpsc-queue/mpsc.c
       cbits/curl_uv.c
       cbits/message_chan.c
       cbits/simple_string.c
+      cbits/extras.c
+      cbits/curl_metrics.c
   extra-libraries:
       curl
       uv
@@ -151,6 +158,7 @@ executable hurl-exe
     , mutable-containers
     , parsers
     , primitive
+    , resourcet
     , stm
     , stm-chans
     , stm-containers
@@ -186,13 +194,15 @@ test-suite hurl-test
       TypeFamilies
   ghc-options: -Wall -Wincomplete-patterns -Wno-type-defaults -optc-O3 -optc-ffast-math -threaded -rtsopts -with-rtsopts=-N
   include-dirs:
-      cbits
-      third-party
+      ./cbits
+      ./third-party
   c-sources:
       third-party/include/waitfree-mpsc-queue/mpsc.c
       cbits/curl_uv.c
       cbits/message_chan.c
       cbits/simple_string.c
+      cbits/extras.c
+      cbits/curl_metrics.c
   extra-libraries:
       curl
       uv
@@ -214,6 +224,7 @@ test-suite hurl-test
     , mutable-containers
     , parsers
     , primitive
+    , resourcet
     , stm
     , stm-chans
     , stm-containers
@@ -248,13 +259,15 @@ benchmark hurl-benchmark
       TypeFamilies
   ghc-options: -Wall -Wincomplete-patterns -Wno-type-defaults -optc-O3 -optc-ffast-math -threaded -rtsopts -with-rtsopts=-N
   include-dirs:
-      cbits
-      third-party
+      ./cbits
+      ./third-party
   c-sources:
       third-party/include/waitfree-mpsc-queue/mpsc.c
       cbits/curl_uv.c
       cbits/message_chan.c
       cbits/simple_string.c
+      cbits/extras.c
+      cbits/curl_metrics.c
   extra-libraries:
       curl
       uv
@@ -279,6 +292,7 @@ benchmark hurl-benchmark
     , mutable-containers
     , parsers
     , primitive
+    , resourcet
     , stm
     , stm-chans
     , stm-containers
