@@ -30,6 +30,7 @@ library
       Extras
       Internal.Callbacks
       Internal.Easy
+      Internal.Metrics
       Internal.MPSC
       Internal.Multi
       Internal.Raw
@@ -37,6 +38,7 @@ library
       Internal.Raw.Context
       Internal.Raw.Curl
       Internal.Raw.Extras
+      Internal.Raw.Metrics
       Internal.Raw.MPSC
       Internal.Raw.SimpleString
       Internal.Raw.UV
@@ -70,6 +72,8 @@ library
       cbits/curl_uv.c
       cbits/message_chan.c
       cbits/simple_string.c
+      cbits/extras.c
+      cbits/curl_metrics.c
   extra-libraries:
       curl
       uv
@@ -90,6 +94,7 @@ library
     , mutable-containers
     , parsers
     , primitive
+    , resourcet
     , stm
     , stm-chans
     , stm-containers
@@ -130,6 +135,8 @@ executable hurl-exe
       cbits/curl_uv.c
       cbits/message_chan.c
       cbits/simple_string.c
+      cbits/extras.c
+      cbits/curl_metrics.c
   extra-libraries:
       curl
       uv
@@ -151,6 +158,7 @@ executable hurl-exe
     , mutable-containers
     , parsers
     , primitive
+    , resourcet
     , stm
     , stm-chans
     , stm-containers
@@ -193,6 +201,8 @@ test-suite hurl-test
       cbits/curl_uv.c
       cbits/message_chan.c
       cbits/simple_string.c
+      cbits/extras.c
+      cbits/curl_metrics.c
   extra-libraries:
       curl
       uv
@@ -214,6 +224,7 @@ test-suite hurl-test
     , mutable-containers
     , parsers
     , primitive
+    , resourcet
     , stm
     , stm-chans
     , stm-containers
@@ -255,6 +266,8 @@ benchmark hurl-benchmark
       cbits/curl_uv.c
       cbits/message_chan.c
       cbits/simple_string.c
+      cbits/extras.c
+      cbits/curl_metrics.c
   extra-libraries:
       curl
       uv
@@ -279,6 +292,7 @@ benchmark hurl-benchmark
     , mutable-containers
     , parsers
     , primitive
+    , resourcet
     , stm
     , stm-chans
     , stm-containers

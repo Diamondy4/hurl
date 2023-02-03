@@ -19,11 +19,13 @@ import Control.Concurrent.Async qualified as Async
 import Control.Concurrent.MVar
 import Control.Exception
 import Control.Monad (unless)
+import Foreign (freeStablePtr)
 import Foreign.Ptr
 import GHC.Generics
 import Internal.MPSC
 import Internal.Multi
 import Internal.Raw
+import Internal.Raw.Extras
 import Internal.Raw.MPSC
 import Internal.Raw.UV
 import Language.C.Inline qualified as C
@@ -71,7 +73,7 @@ spawnAgent config = do
 
 new :: Ptr CurlMulti -> IO AgentContext
 new multiPtr = do
-    msgQueue <- initMPSCQ 10000
+    msgQueue <- initMPSCQ 100000
     uvLoopPtr <-
         [C.block| uv_loop_t* { 
         uv_loop_t *loop = malloc(sizeof(uv_loop_t));
@@ -113,5 +115,9 @@ sendMessage ctx outerMessage = do
 
 cancelRequest :: AgentContext -> RequestHandler -> IO ()
 cancelRequest ctx reqHandler = withCurlEasy reqHandler.easy \easyPtr -> do
-    sendMessage ctx $ CancelRequest easyPtr
-    readMVar reqHandler.doneRequest
+    waker <- newEmptyMVar
+    sendMessage ctx $ CancelRequest easyPtr waker
+    readMVar waker
+    requestWaker <- withEasyData reqHandler.easyData getMVarSPtrC
+    unless requestWaker.waked do
+        freeStablePtr requestWaker.mvarSPtr

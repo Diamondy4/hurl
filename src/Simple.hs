@@ -18,12 +18,13 @@ import Internal.Raw
 import Agent
 import Extras
 import Internal.Easy
+import Internal.Metrics
 import Internal.Raw.Extras (getCurlCode)
 import Internal.Raw.MPSC (OuterMessage (Execute))
+import Language.C.Inline.Unsafe qualified as CU
 import Request
 import Response
 import UnliftIO
-import qualified Language.C.Inline.Unsafe as CU
 
 C.context (C.baseCtx <> C.funCtx <> C.fptrCtx <> C.bsCtx <> localCtx)
 
@@ -49,7 +50,8 @@ performRequest agent reqHandler = withCurlEasy reqHandler.easy \easyPtr -> do
                      curl_easy_getinfo($(CURL* easyPtr), CURLINFO_RESPONSE_CODE, &http_code);
                      return http_code;
                  }|]
-            pure . Right $! Response{info = HttpParts{statusCode = fromIntegral code, headers = []}, body = BSL.fromStrict responseBS}
+            metrics <- extractMetrics reqHandler.metricsContext
+            pure . Right $! Response{info = HttpParts{statusCode = fromIntegral code, headers = []}, body = BSL.fromStrict responseBS, metrics}
         err -> pure $ Left err
 
 httpLBS :: AgentHandle -> Request -> IO (Either CurlCode (Response BSL.ByteString))

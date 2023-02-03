@@ -46,6 +46,7 @@ dependencies:
   - stm-containers
   - atomic-primops
   - deepseq
+  - resourcet
 
 ghc-options:
   - -Wall
@@ -63,6 +64,8 @@ c-sources:
   - "cbits/curl_uv.c"
   - "cbits/message_chan.c"
   - "cbits/simple_string.c"
+  - "cbits/extras.c"
+  - "cbits/curl_metrics.c"
 
 language: GHC2021
 

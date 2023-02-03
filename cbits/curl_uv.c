@@ -11,7 +11,6 @@ socket_context_t *new_socket_context(multi_context_t *multi_context, curl_socket
     uv_poll_init_socket(multi_context->loop, &socket_context->poll_handle, socket_fd);
     socket_context->poll_handle.data = socket_context;
 
-
     return socket_context;
 }
 
@@ -38,11 +37,9 @@ void check_multi_info(CURLM *multi) {
                 curl_easy_getinfo(easy_handle, CURLINFO_PRIVATE, &hs_easy_data);
 
                 hs_easy_data->curl_code = message->data.result;
-                hs_easy_data->done_request = true;
-                hs_try_putmvar(hs_easy_data->capability, hs_easy_data->done_request_mvar);
+                wake_up_waker(&hs_easy_data->waker);
 
                 curl_multi_remove_handle(multi, easy_handle);
-
                 break;
             default:
                 break;
@@ -55,10 +52,14 @@ void socket_callback(uv_poll_t *poll, int status, int events) {
     int running_handles = 0;
     int flags = 0;
 
-    if (events & UV_READABLE) {
+    if (status < 0) {
+        flags = CURL_CSELECT_ERR;
+    }
+
+    if (!status && events & UV_READABLE) {
         flags |= CURL_CSELECT_IN;
     }
-    if (events & UV_WRITABLE) {
+    if (!status && events & UV_WRITABLE) {
         flags |= CURL_CSELECT_OUT;
     }
 
@@ -103,9 +104,8 @@ int curl_socket_function(CURL *easy, curl_socket_t socket_fd, int action, multi_
                 socket_context = socket_context_p;
             } else {
                 socket_context = new_socket_context(multi_context, socket_fd);
+                curl_multi_assign(multi_context->multi, socket_fd, socket_context);
             }
-
-            curl_multi_assign(multi_context->multi, socket_fd, socket_context);
 
             if (action != CURL_POLL_IN) {
                 events |= UV_WRITABLE;

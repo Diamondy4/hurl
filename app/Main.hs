@@ -6,7 +6,6 @@ import Request
 import Simple
 import System.TimeIt
 import Types
-import UnliftIO.Async
 import UnliftIO.Exception
 
 performRequestTest :: AgentHandle -> IO ()
@@ -15,16 +14,16 @@ performRequestTest agent = do
         body = Empty
         req =
             Request
-                { host = "https://example.com"
+                { host = "http://dev-avod-rt.getshop.tv:414/body/"
                 , timeoutMS = 0
                 , connectionTimeoutMS = 0
-                , lowSpeedLimit = LowSpeedLimit{lowSpeed = 1, timeout = 400}
+                , lowSpeedLimit = LowSpeedLimit{lowSpeed = 1, timeout = 1}
                 , body
                 , headers = headers
                 , method = Post
                 }
-    !_response <- timeIt $ httpLBS agent req
-    -- print response
+    !response <- timeIt $ httpLBS agent req
+    print response
     pure ()
 
 data Err = Err deriving (Show, Exception)
@@ -34,21 +33,22 @@ main = do
     initCurl
     let conf =
             AgentConfig
-                { connectionCacheSize = 5000
-                , maxConnectionPerHost = 100
-                , maxConnection = 1000
+                { connectionCacheSize = 0
+                , maxConnectionPerHost = 8
+                , maxConnection = 0
                 }
     agent <- Agent.spawnAgent conf
     threadDelay 1_000_000
     print "initialized"
+    performRequestTest agent
     -- successCounter <- newCounter 0
-    a1 <- async $ forConcurrently_ [1 .. 1000] \_i -> do
-        performRequestTest agent
+    --a1 <- async $ forConcurrently_ [1 .. 1000] \_i -> do
+    --    performRequestTest agent
     -- incrCounter_ 1 successCounter
-    a2 <- async $ forConcurrently_ [1 .. 1000] \_i -> do
-        performRequestTest agent
+    --a2 <- async $ forConcurrently_ [1 .. 1000] \_i -> do
+    --    performRequestTest agent
     --    incrCounter_ 1 successCounter
-    _ <- waitBoth a1 a2
+    --_ <- waitBoth a1 a2
     -- print =<< readCounter successCounter
     -- throwTo reqThread Err
     threadDelay 60_000_000

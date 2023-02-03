@@ -90,6 +90,7 @@ hurlGetRequest =
         { host = "https://dev-avod-rt.getshop.tv:414/body/"
         , timeoutMS = 0
         , connectionTimeoutMS = 400
+        , lowSpeedLimit = LowSpeedLimit{timeout = 1, lowSpeed = 1}
         , Request.body = Empty
         , Request.headers = []
         , method = Get
