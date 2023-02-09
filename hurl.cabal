@@ -67,6 +67,13 @@ library
   include-dirs:
       cbits
       third-party
+  install-includes:
+      curl_uv.h
+      message_chan.h
+      simple_string.h
+      extras.h
+      curl_metrics.h
+      include/waitfree-mpsc-queue/mpscq.h
   c-sources:
       third-party/include/waitfree-mpsc-queue/mpsc.c
       cbits/curl_uv.c
@@ -131,6 +138,13 @@ executable hurl-exe
   include-dirs:
       cbits
       third-party
+  install-includes:
+      curl_uv.h
+      message_chan.h
+      simple_string.h
+      extras.h
+      curl_metrics.h
+      include/waitfree-mpsc-queue/mpscq.h
   c-sources:
       third-party/include/waitfree-mpsc-queue/mpsc.c
       cbits/curl_uv.c
@@ -141,8 +155,6 @@ executable hurl-exe
   extra-libraries:
       curl
       uv
-  build-tools:
-      c2hs
   build-depends:
       PyF
     , async
@@ -198,6 +210,13 @@ test-suite hurl-test
   include-dirs:
       cbits
       third-party
+  install-includes:
+      curl_uv.h
+      message_chan.h
+      simple_string.h
+      extras.h
+      curl_metrics.h
+      include/waitfree-mpsc-queue/mpscq.h
   c-sources:
       third-party/include/waitfree-mpsc-queue/mpsc.c
       cbits/curl_uv.c
@@ -208,8 +227,6 @@ test-suite hurl-test
   extra-libraries:
       curl
       uv
-  build-tools:
-      c2hs
   build-depends:
       PyF
     , async
@@ -264,6 +281,13 @@ benchmark hurl-benchmark
   include-dirs:
       cbits
       third-party
+  install-includes:
+      curl_uv.h
+      message_chan.h
+      simple_string.h
+      extras.h
+      curl_metrics.h
+      include/waitfree-mpsc-queue/mpscq.h
   c-sources:
       third-party/include/waitfree-mpsc-queue/mpsc.c
       cbits/curl_uv.c
@@ -274,8 +298,6 @@ benchmark hurl-benchmark
   extra-libraries:
       curl
       uv
-  build-tools:
-      c2hs
   build-depends:
       PyF
     , async
