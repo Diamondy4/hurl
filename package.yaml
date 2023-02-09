@@ -13,7 +13,6 @@ extra-source-files:
 synopsis: Network client based on curl multi interface
 category: Web
 
-
 # To avoid duplicated efforts in documentation and dealing with the
 # complications of embedding Haddock markup inside cabal files, it is
 # common to point users to the README.md file.
@@ -51,13 +50,21 @@ dependencies:
 ghc-options:
   - -Wall
   - -Wincomplete-patterns
-  - -Wno-type-defaults 
+  - -Wno-type-defaults
   - -optc-O3
-  - -optc-ffast-math 
+  - -optc-ffast-math
 
 include-dirs:
   - "./cbits"
   - "./third-party"
+
+install-includes:
+  - curl_uv.h
+  - message_chan.h
+  - simple_string.h
+  - extras.h
+  - curl_metrics.h
+  - "include/waitfree-mpsc-queue/mpscq.h"
 
 c-sources:
   - "third-party/include/waitfree-mpsc-queue/mpsc.c"
@@ -70,26 +77,25 @@ c-sources:
 language: GHC2021
 
 default-extensions:
- - OverloadedStrings
- - DerivingStrategies
- - DeriveAnyClass
- - LambdaCase
- - OverloadedRecordDot
- - BlockArguments
- - DerivingVia
- - DuplicateRecordFields
- - GeneralizedNewtypeDeriving
- - TypeFamilies
+  - OverloadedStrings
+  - DerivingStrategies
+  - DeriveAnyClass
+  - LambdaCase
+  - OverloadedRecordDot
+  - BlockArguments
+  - DerivingVia
+  - DuplicateRecordFields
+  - GeneralizedNewtypeDeriving
+  - TypeFamilies
 
 extra-libraries:
   - curl
   - uv
 
-build-tools:
-  - c2hs
-
 library:
   source-dirs: src
+  build-tools:
+    - c2hs
 
 executables:
   hurl-exe:
@@ -102,6 +108,7 @@ executables:
     dependencies:
       - hurl
       - timeit
+
 tests:
   hurl-test:
     main: Spec.hs
