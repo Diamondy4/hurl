@@ -95,6 +95,7 @@ library
     , parsers
     , primitive
     , resourcet
+    , roundRobin
     , stm
     , stm-chans
     , stm-containers
@@ -159,6 +160,7 @@ executable hurl-exe
     , parsers
     , primitive
     , resourcet
+    , roundRobin
     , stm
     , stm-chans
     , stm-containers
@@ -225,6 +227,7 @@ test-suite hurl-test
     , parsers
     , primitive
     , resourcet
+    , roundRobin
     , stm
     , stm-chans
     , stm-containers
@@ -293,6 +296,7 @@ benchmark hurl-benchmark
     , parsers
     , primitive
     , resourcet
+    , roundRobin
     , stm
     , stm-chans
     , stm-containers

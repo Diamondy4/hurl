@@ -9,21 +9,27 @@
 
 module Internal.Slist where
 
+import Control.Exception
 import Control.Monad.Cont
+import Control.Monad.Trans.Resource (MonadResource, ReleaseKey, allocate)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.Coerce
 import Foreign
 import Internal.Raw
 import Language.C.Inline qualified as C
-import qualified Language.C.Inline.Unsafe as CU
+import Language.C.Inline.Unsafe qualified as CU
 
 C.context (C.baseCtx <> localCtx)
 
 C.include "<curl/curl.h>"
 C.include "extras.h"
 
-toHeaderSlistCont :: [ByteString] -> ContT a IO (Maybe (Ptr CurlSlist))
+data CurlSlistError = CurlSlistAppendFailed
+  deriving (Show)
+  deriving anyclass (Exception)
+
+toHeaderSlistCont :: [ByteString] -> ContT a IO (Ptr CurlSlist)
 toHeaderSlistCont headers = do
   headersC <- traverse (ContT . BS.useAsCString) headers
   (headersCArrLen', headersCArr) <- ContT (withArrayLen headersC . curry)
@@ -44,13 +50,24 @@ toHeaderSlistCont headers = do
 
                 return slist;
         }|]
-  pure if ptr == nullPtr then Nothing else Just ptr
 
-toHeaderSlistP :: [ByteString] -> IO (Maybe (Ptr CurlSlist))
-toHeaderSlistP headers = runContT (toHeaderSlistCont headers) return
+  if ptr == nullPtr
+    then liftIO $ throwIO CurlSlistAppendFailed
+    else pure ptr
+
+toHeaderSlistP :: [ByteString] -> IO (Ptr CurlSlist)
+toHeaderSlistP headers = runContT (toHeaderSlistCont headers) pure
 
 finalizeCurlSlist :: FunPtr (Ptr CurlSlist -> IO ())
 finalizeCurlSlist = [C.funPtr| void free_slist(curl_slist_t* ptr){ curl_slist_free_all(ptr); } |]
 
-toHeaderSlist :: [ByteString] -> IO (Maybe CurlSlist)
-toHeaderSlist headers = traverse (coerce . newForeignPtr finalizeCurlSlist) =<< toHeaderSlistP headers
+-- | Manage memory with ResourceT
+allocateSlist :: MonadResource m => [ByteString] -> m (ReleaseKey, Ptr CurlSlist)
+allocateSlist headers =
+  allocate
+    (toHeaderSlistP headers)
+    \ptr -> [CU.block|void {curl_slist_free_all($(curl_slist_t* ptr));}|]
+
+-- | Manage memory with ForeignPtr
+toHeaderSlist :: [ByteString] -> IO CurlSlist
+toHeaderSlist headers = toHeaderSlistP headers >>= coerce . newForeignPtr finalizeCurlSlist

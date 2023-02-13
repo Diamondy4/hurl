@@ -8,12 +8,10 @@ import Control.DeepSeq (NFData)
 import Control.Monad.Cont
 import Foreign
 import GHC.Generics
-import Internal.Raw (CurlEasy, withCurlEasy)
-import Internal.Raw.Context
+import Internal.Raw
 import Internal.Raw.Metrics
 import Language.C.Inline qualified as C
 import Language.C.Inline.Unsafe qualified as CU
-
 
 C.context (C.baseCtx <> C.funCtx <> C.fptrCtx <> C.bsCtx <> localCtx)
 
@@ -38,7 +36,7 @@ data Metrics = Metrics
     deriving anyclass (NFData)
 
 initCurlMetrics :: CurlEasy -> IO CurlMetricsContext
-initCurlMetrics easy = withCurlEasy easy \easyPtr -> do
+initCurlMetrics (CurlEasy easyPtr) = do
     curlMetricsCtxFPtr <- mallocForeignPtrBytes curlMetricsSize
     withForeignPtr curlMetricsCtxFPtr \curlMetricsCtxPtr ->
         [CU.block|void {
@@ -64,6 +62,9 @@ initCurlMetrics easy = withCurlEasy easy \easyPtr -> do
 extractMetrics :: CurlMetricsContext -> IO Metrics
 extractMetrics metricsCtx = runContT (extractMetricsCont metricsCtx) pure
 
+-- We must manually extract values to temp vars and only then get real values because of atomics.
+-- It's undefined behavior to pass atomic ptr as non-atomics ptr.
+-- TODO: Allocate an array to fill instead if many vars.
 extractMetricsCont :: CurlMetricsContext -> ContT a IO Metrics
 extractMetricsCont metricsCtx = do
     uploadProgressPtr <- ContT alloca

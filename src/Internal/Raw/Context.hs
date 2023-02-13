@@ -29,7 +29,6 @@ curlTypesTable =
             [ (C.TypeName "CURLM", [t|CurlMulti|])
             , (C.TypeName "CURL", [t|CurlEasy|])
             , (C.TypeName "curl_slist_t", [t|CurlSlist|])
-            , (C.TypeName "CURLMsg", [t|CurlMultiMsgRaw|])
             ]
 
 extraTypesTable :: Map.Map C.TypeSpecifier TH.TypeQ

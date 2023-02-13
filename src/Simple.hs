@@ -16,6 +16,7 @@ import Language.C.Inline qualified as C
 import Internal.Raw
 
 import Agent
+import Data.RoundRobin
 import Extras
 import Internal.Easy
 import Internal.Metrics
@@ -25,6 +26,7 @@ import Language.C.Inline.Unsafe qualified as CU
 import Request
 import Response
 import UnliftIO
+import UnliftIO.Resource
 
 C.context (C.baseCtx <> C.funCtx <> C.fptrCtx <> C.bsCtx <> localCtx)
 
@@ -38,7 +40,8 @@ initCurl :: IO ()
 initCurl = [C.block|void { curl_global_init(CURL_GLOBAL_DEFAULT); }|]
 
 performRequest :: AgentHandle -> RequestHandler -> IO (Either CurlCode (Response BSL.ByteString))
-performRequest agent reqHandler = withCurlEasy reqHandler.easy \easyPtr -> do
+performRequest agent reqHandler = do
+    let CurlEasy easyPtr = reqHandler.easy
     sendMessage agent.agentContext $ Execute easyPtr
     readMVar reqHandler.doneRequest
     getCurlCode reqHandler.easyData >>= \case
@@ -54,5 +57,13 @@ performRequest agent reqHandler = withCurlEasy reqHandler.easy \easyPtr -> do
             pure . Right $! Response{info = HttpParts{statusCode = fromIntegral code, headers = []}, body = BSL.fromStrict responseBS, metrics}
         err -> pure $ Left err
 
-httpLBS :: AgentHandle -> Request -> IO (Either CurlCode (Response BSL.ByteString))
-httpLBS agent request = bracket (initRequest request) (cancelRequest agent.agentContext) (performRequest agent)
+httpLBS :: (MonadResource m, MonadUnliftIO m) => Agent -> Request -> m (Either CurlCode (Response BSL.ByteString))
+httpLBS agent request = do
+    (releaseKeyEasy, easy) <- allocateEasy
+    req <- initRequest request easy
+    agentHandle <- case agent of
+        Single agentHandle -> pure agentHandle
+        Threaded rr -> liftIO $ select rr
+    res <- liftIO (performRequest agentHandle req) -- `onException` liftIO (cancelRequest agent.agentContext req)
+    release releaseKeyEasy
+    pure res

@@ -47,7 +47,8 @@ dependencies:
   - atomic-primops
   - deepseq
   - resourcet
-
+  - roundRobin
+  
 ghc-options:
   - -Wall
   - -Wincomplete-patterns

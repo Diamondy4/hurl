@@ -1,14 +1,10 @@
-module Types where
+module Types where 
 
 import Control.DeepSeq
 import Data.ByteString
-import Data.Vector.Hashtables qualified as VHT
-import Data.Vector.Mutable qualified as VM
-import Data.Vector.Unboxed.Mutable qualified as VUM
 import GHC.Generics
 import Numeric.Natural
 
-type HashTable k v = VHT.Dictionary (VHT.PrimState IO) VUM.MVector k VM.MVector v
 data Body where
     Empty :: Body
     Buffer :: !ByteString -> Body

@@ -7,8 +7,9 @@ import Simple
 import System.TimeIt
 import Types
 import UnliftIO.Exception
+import Control.Monad.Trans.Resource
 
-performRequestTest :: AgentHandle -> IO ()
+performRequestTest :: Agent -> IO ()
 performRequestTest agent = do
     let headers = ["Transfer-Encoding: chunked", "Accept: application/json", "Content-Type: application/json", "charset: utf-8"]
         body = Empty
@@ -19,10 +20,10 @@ performRequestTest agent = do
                 , connectionTimeoutMS = 0
                 , lowSpeedLimit = LowSpeedLimit{lowSpeed = 1, timeout = 1}
                 , body
-                , headers = headers
+                , headers = HeaderList headers
                 , method = Post
                 }
-    !response <- timeIt $ httpLBS agent req
+    !response <- timeIt $ runResourceT $ httpLBS agent req
     print response
     pure ()
 

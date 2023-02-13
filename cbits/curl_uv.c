@@ -37,9 +37,10 @@ void check_multi_info(CURLM *multi) {
                 curl_easy_getinfo(easy_handle, CURLINFO_PRIVATE, &hs_easy_data);
 
                 hs_easy_data->curl_code = message->data.result;
+                
+                curl_multi_remove_handle(multi, easy_handle);
                 wake_up_waker(&hs_easy_data->waker);
 
-                curl_multi_remove_handle(multi, easy_handle);
                 break;
             default:
                 break;

@@ -4,8 +4,8 @@
 {-# LANGUAGE ImpredicativeTypes #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MagicHash #-}
+{-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE OverloadedRecordDot #-}
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -14,11 +14,15 @@
 
 module Agent where
 
+import Control.Concurrent (getNumCapabilities)
 import Control.Concurrent.Async (Async)
 import Control.Concurrent.Async qualified as Async
 import Control.Concurrent.MVar
 import Control.Exception
-import Control.Monad (unless)
+import Control.Monad (unless, void)
+import Data.RoundRobin (RoundRobin, newRoundRobin)
+import Data.Traversable
+import Extras
 import Foreign (freeStablePtr)
 import Foreign.Ptr
 import GHC.Generics
@@ -61,7 +65,22 @@ data AgentHandle = AgentHandle
     }
     deriving (Generic)
 
-spawnAgent :: AgentConfig -> IO AgentHandle
+data Agent = Single AgentHandle | Threaded (RoundRobin AgentHandle)
+
+spawnThreadedAgent :: Int -> AgentConfig -> IO Agent
+spawnThreadedAgent numThreads config = do
+    realCapabilities <- getNumCapabilities
+    let numThreads' = min realCapabilities numThreads
+    handles <- for [0 .. numThreads'] \cap -> do
+        multi <- initCurlMulti config
+        agentContext <- Agent.new multi
+        agentThreadId <- Async.asyncOn cap do
+            Agent.run agentContext `catch` \(ex :: SomeException) -> print [fmt|agent died with exception {show ex}|]
+        pure $ AgentHandle{agentThreadId, agentContext}
+    rr <- newRoundRobin handles
+    pure $ Threaded rr
+
+spawnAgent :: AgentConfig -> IO Agent
 spawnAgent config = do
     multi <- initCurlMulti config
 
@@ -69,7 +88,7 @@ spawnAgent config = do
 
     agentThreadId <- Async.async $ do
         Agent.run agentContext `catch` \(ex :: SomeException) -> print [fmt|agent died with exception {show ex}|]
-    pure AgentHandle{agentThreadId, agentContext}
+    pure . Single $ AgentHandle{agentThreadId, agentContext}
 
 new :: Ptr CurlMulti -> IO AgentContext
 new multiPtr = do
@@ -114,10 +133,12 @@ sendMessage ctx outerMessage = do
         throwIO QueueFull
 
 cancelRequest :: AgentContext -> RequestHandler -> IO ()
-cancelRequest ctx reqHandler = withCurlEasy reqHandler.easy \easyPtr -> do
+cancelRequest ctx reqHandler = do
+    let CurlEasy easyPtr = reqHandler.easy
     waker <- newEmptyMVar
     sendMessage ctx $ CancelRequest easyPtr waker
     readMVar waker
     requestWaker <- withEasyData reqHandler.easyData getMVarSPtrC
+    void $ simpleStringToBS reqHandler.responseSimpleString
     unless requestWaker.waked do
         freeStablePtr requestWaker.mvarSPtr
