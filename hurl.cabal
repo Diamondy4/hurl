@@ -33,10 +33,14 @@ library
       Internal.Metrics
       Internal.MPSC
       Internal.Multi
+      Internal.Options
+      Internal.Options.Class
+      Internal.Options.TH
       Internal.Raw
       Internal.Raw.Alloc
       Internal.Raw.Context
       Internal.Raw.Curl
+      Internal.Raw.CurlFunctions
       Internal.Raw.Extras
       Internal.Raw.Metrics
       Internal.Raw.MPSC
@@ -63,7 +67,8 @@ library
       DuplicateRecordFields
       GeneralizedNewtypeDeriving
       TypeFamilies
-  ghc-options: -Wall -Wincomplete-patterns -Wno-type-defaults -optc-O3 -optc-ffast-math
+      StrictData
+  ghc-options: -Wall -Wincomplete-patterns -Wno-type-defaults -Wno-unticked-promoted-constructors -optc-O3 -optc-ffast-math
   include-dirs:
       cbits
       third-party
@@ -103,6 +108,8 @@ library
     , primitive
     , resourcet
     , roundRobin
+    , singletons
+    , singletons-th
     , stm
     , stm-chans
     , stm-containers
@@ -134,7 +141,8 @@ executable hurl-exe
       DuplicateRecordFields
       GeneralizedNewtypeDeriving
       TypeFamilies
-  ghc-options: -Wall -Wincomplete-patterns -Wno-type-defaults -optc-O3 -optc-ffast-math -threaded -rtsopts "-with-rtsopts=-N"
+      StrictData
+  ghc-options: -Wall -Wincomplete-patterns -Wno-type-defaults -Wno-unticked-promoted-constructors -optc-O3 -optc-ffast-math -threaded -rtsopts "-with-rtsopts=-N"
   include-dirs:
       cbits
       third-party
@@ -173,6 +181,8 @@ executable hurl-exe
     , primitive
     , resourcet
     , roundRobin
+    , singletons
+    , singletons-th
     , stm
     , stm-chans
     , stm-containers
@@ -206,7 +216,8 @@ test-suite hurl-test
       DuplicateRecordFields
       GeneralizedNewtypeDeriving
       TypeFamilies
-  ghc-options: -Wall -Wincomplete-patterns -Wno-type-defaults -optc-O3 -optc-ffast-math -threaded -rtsopts -with-rtsopts=-N
+      StrictData
+  ghc-options: -Wall -Wincomplete-patterns -Wno-type-defaults -Wno-unticked-promoted-constructors -optc-O3 -optc-ffast-math -threaded -rtsopts -with-rtsopts=-N
   include-dirs:
       cbits
       third-party
@@ -245,6 +256,8 @@ test-suite hurl-test
     , primitive
     , resourcet
     , roundRobin
+    , singletons
+    , singletons-th
     , stm
     , stm-chans
     , stm-containers
@@ -277,7 +290,8 @@ benchmark hurl-benchmark
       DuplicateRecordFields
       GeneralizedNewtypeDeriving
       TypeFamilies
-  ghc-options: -Wall -Wincomplete-patterns -Wno-type-defaults -optc-O3 -optc-ffast-math -threaded -rtsopts -with-rtsopts=-N
+      StrictData
+  ghc-options: -Wall -Wincomplete-patterns -Wno-type-defaults -Wno-unticked-promoted-constructors -optc-O3 -optc-ffast-math -threaded -rtsopts -with-rtsopts=-N
   include-dirs:
       cbits
       third-party
@@ -319,6 +333,8 @@ benchmark hurl-benchmark
     , primitive
     , resourcet
     , roundRobin
+    , singletons
+    , singletons-th
     , stm
     , stm-chans
     , stm-containers

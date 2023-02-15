@@ -22,6 +22,7 @@ performRequestTest agent = do
                 , body
                 , headers = HeaderList headers
                 , method = Post
+                , extraOptions = []
                 }
     !response <- timeIt $ runResourceT $ httpLBS agent req
     print response

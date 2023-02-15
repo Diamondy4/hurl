@@ -1,3 +1,5 @@
+{-# LANGUAGE ImpredicativeTypes #-}
+
 module Request where
 
 import Control.Concurrent.MVar
@@ -7,6 +9,7 @@ import Control.Monad.Trans.Resource
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import GHC.Generics
+import Internal.Options
 import Internal.Raw
 import Internal.Raw.Extras
 import Internal.Raw.Metrics (CurlMetricsContext)
@@ -22,6 +25,7 @@ data Request = Request
     , body :: !Body
     , method :: !HTTPMethod
     , headers :: !RequestHeader
+    , extraOptions :: ![SomeOption]
     }
     deriving (Generic)
     deriving anyclass (NFData)
@@ -51,4 +55,4 @@ data RequestHandler = RequestHandler
 
 completeResponse :: MVar () -> IO ()
 completeResponse completeResponseWaker = do
-    void $ tryPutMVar completeResponseWaker ()
+    void $ tryPutMVar completeResponseWaker ()  

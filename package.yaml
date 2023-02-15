@@ -47,11 +47,15 @@ dependencies:
   - deepseq
   - resourcet
   - roundRobin
+  - singletons
+  - singletons-th
+  - template-haskell
   
 ghc-options:
   - -Wall
   - -Wincomplete-patterns
   - -Wno-type-defaults
+  - -Wno-unticked-promoted-constructors
   - -optc-O3
   - -optc-ffast-math
 
@@ -88,6 +92,7 @@ default-extensions:
   - DuplicateRecordFields
   - GeneralizedNewtypeDeriving
   - TypeFamilies
+  - StrictData
 
 extra-libraries:
   - curl
