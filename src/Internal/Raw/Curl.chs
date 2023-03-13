@@ -10,8 +10,6 @@ import Control.Exception (Exception)
 import Control.DeepSeq
 import GHC.Generics
 import Data.Singletons.TH (genSingletons)
-import Foreign.C
-import Foreign.Ptr
 
 #include <curl/curl.h>
 
