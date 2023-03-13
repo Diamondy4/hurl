@@ -23,61 +23,23 @@ dependencies:
   - inline-c
   - template-haskell
   - PyF
-  - containers
-  - parsers
   - bytestring
-  - text
+  - containers
   - mtl
-  - unagi-chan
-  - flush-queue
   - unliftio
-  - unordered-containers
-  - primitive
-  - stm
-  - vector-hashtables
-  - hashable
-  - stm-delay
-  - time
-  - stm-chans
   - async
-  - mutable-containers
-  - vector
-  - stm-containers
-  - atomic-primops
   - deepseq
   - resourcet
   - roundRobin
   - singletons
   - singletons-th
   - template-haskell
-  
+
 ghc-options:
   - -Wall
   - -Wincomplete-patterns
   - -Wno-type-defaults
   - -Wno-unticked-promoted-constructors
-  - -optc-O3
-  - -optc-ffast-math
-
-include-dirs:
-  - cbits
-  - third-party
-
-install-includes:
-  - curl_uv.h
-  - message_chan.h
-  - simple_string.h
-  - extras.h
-  - curl_metrics.h
-  - "include/waitfree-mpsc-queue/mpscq.h"
-
-c-sources:
-  - "third-party/include/waitfree-mpsc-queue/mpsc.c"
-  - "cbits/curl_uv.c"
-  - "cbits/message_chan.c"
-  - "cbits/simple_string.c"
-  - "cbits/extras.c"
-  - "cbits/curl_metrics.c"
 
 language: GHC2021
 
@@ -94,26 +56,37 @@ default-extensions:
   - TypeFamilies
   - StrictData
 
-extra-libraries:
-  - curl
-  - uv
-
 library:
   source-dirs: src
+  extra-libraries:
+    - curl
+    - uv
   build-tools:
     - c2hs
-
-executables:
-  hurl-exe:
-    main: Main.hs
-    source-dirs: app
-    ghc-options:
-      - -threaded
-      - -rtsopts
-      - '"-with-rtsopts=-N"'
-    dependencies:
-      - hurl
-      - timeit
+  include-dirs:
+    - cbits
+    - third-party
+  install-includes:
+    - curl_uv.h
+    - message_chan.h
+    - simple_string.h
+    - extras.h
+    - curl_metrics.h
+    - "include/waitfree-mpsc-queue/mpscq.h"
+  c-sources:
+    - "third-party/include/waitfree-mpsc-queue/mpsc.c"
+    - "cbits/curl_uv.c"
+    - "cbits/message_chan.c"
+    - "cbits/simple_string.c"
+    - "cbits/extras.c"
+    - "cbits/curl_metrics.c"
+  ghc-options:
+    - -Wall
+    - -Wincomplete-patterns
+    - -Wno-type-defaults
+    - -Wno-unticked-promoted-constructors
+    - -optc-O3
+    - -optc-ffast-math
 
 tests:
   hurl-test:

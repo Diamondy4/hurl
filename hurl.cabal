@@ -1,6 +1,6 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.35.1.
+-- This file has been generated from package.yaml by hpack version 0.35.2.
 --
 -- see: https://github.com/sol/hpack
 
@@ -68,7 +68,7 @@ library
       GeneralizedNewtypeDeriving
       TypeFamilies
       StrictData
-  ghc-options: -Wall -Wincomplete-patterns -Wno-type-defaults -Wno-unticked-promoted-constructors -optc-O3 -optc-ffast-math
+  ghc-options: -Wall -Wincomplete-patterns -Wno-type-defaults -Wno-unticked-promoted-constructors -Wall -Wincomplete-patterns -Wno-type-defaults -Wno-unticked-promoted-constructors -optc-O3 -optc-ffast-math
   include-dirs:
       cbits
       third-party
@@ -94,108 +94,18 @@ library
   build-depends:
       PyF
     , async
-    , atomic-primops
     , base >=4.7 && <5
     , bytestring
     , containers
     , deepseq
-    , flush-queue
-    , hashable
     , inline-c
     , mtl
-    , mutable-containers
-    , parsers
-    , primitive
     , resourcet
     , roundRobin
     , singletons
     , singletons-th
-    , stm
-    , stm-chans
-    , stm-containers
-    , stm-delay
     , template-haskell
-    , text
-    , time
-    , unagi-chan
     , unliftio
-    , unordered-containers
-    , vector
-    , vector-hashtables
-  default-language: GHC2021
-
-executable hurl-exe
-  main-is: Main.hs
-  other-modules:
-      Paths_hurl
-  hs-source-dirs:
-      app
-  default-extensions:
-      OverloadedStrings
-      DerivingStrategies
-      DeriveAnyClass
-      LambdaCase
-      OverloadedRecordDot
-      BlockArguments
-      DerivingVia
-      DuplicateRecordFields
-      GeneralizedNewtypeDeriving
-      TypeFamilies
-      StrictData
-  ghc-options: -Wall -Wincomplete-patterns -Wno-type-defaults -Wno-unticked-promoted-constructors -optc-O3 -optc-ffast-math -threaded -rtsopts "-with-rtsopts=-N"
-  include-dirs:
-      cbits
-      third-party
-  install-includes:
-      curl_uv.h
-      message_chan.h
-      simple_string.h
-      extras.h
-      curl_metrics.h
-      include/waitfree-mpsc-queue/mpscq.h
-  c-sources:
-      third-party/include/waitfree-mpsc-queue/mpsc.c
-      cbits/curl_uv.c
-      cbits/message_chan.c
-      cbits/simple_string.c
-      cbits/extras.c
-      cbits/curl_metrics.c
-  extra-libraries:
-      curl
-      uv
-  build-depends:
-      PyF
-    , async
-    , atomic-primops
-    , base >=4.7 && <5
-    , bytestring
-    , containers
-    , deepseq
-    , flush-queue
-    , hashable
-    , hurl
-    , inline-c
-    , mtl
-    , mutable-containers
-    , parsers
-    , primitive
-    , resourcet
-    , roundRobin
-    , singletons
-    , singletons-th
-    , stm
-    , stm-chans
-    , stm-containers
-    , stm-delay
-    , template-haskell
-    , text
-    , time
-    , timeit
-    , unagi-chan
-    , unliftio
-    , unordered-containers
-    , vector
-    , vector-hashtables
   default-language: GHC2021
 
 test-suite hurl-test
@@ -217,59 +127,23 @@ test-suite hurl-test
       GeneralizedNewtypeDeriving
       TypeFamilies
       StrictData
-  ghc-options: -Wall -Wincomplete-patterns -Wno-type-defaults -Wno-unticked-promoted-constructors -optc-O3 -optc-ffast-math -threaded -rtsopts -with-rtsopts=-N
-  include-dirs:
-      cbits
-      third-party
-  install-includes:
-      curl_uv.h
-      message_chan.h
-      simple_string.h
-      extras.h
-      curl_metrics.h
-      include/waitfree-mpsc-queue/mpscq.h
-  c-sources:
-      third-party/include/waitfree-mpsc-queue/mpsc.c
-      cbits/curl_uv.c
-      cbits/message_chan.c
-      cbits/simple_string.c
-      cbits/extras.c
-      cbits/curl_metrics.c
-  extra-libraries:
-      curl
-      uv
+  ghc-options: -Wall -Wincomplete-patterns -Wno-type-defaults -Wno-unticked-promoted-constructors -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       PyF
     , async
-    , atomic-primops
     , base >=4.7 && <5
     , bytestring
     , containers
     , deepseq
-    , flush-queue
-    , hashable
     , hurl
     , inline-c
     , mtl
-    , mutable-containers
-    , parsers
-    , primitive
     , resourcet
     , roundRobin
     , singletons
     , singletons-th
-    , stm
-    , stm-chans
-    , stm-containers
-    , stm-delay
     , template-haskell
-    , text
-    , time
-    , unagi-chan
     , unliftio
-    , unordered-containers
-    , vector
-    , vector-hashtables
   default-language: GHC2021
 
 benchmark hurl-benchmark
@@ -291,60 +165,24 @@ benchmark hurl-benchmark
       GeneralizedNewtypeDeriving
       TypeFamilies
       StrictData
-  ghc-options: -Wall -Wincomplete-patterns -Wno-type-defaults -Wno-unticked-promoted-constructors -optc-O3 -optc-ffast-math -threaded -rtsopts -with-rtsopts=-N
-  include-dirs:
-      cbits
-      third-party
-  install-includes:
-      curl_uv.h
-      message_chan.h
-      simple_string.h
-      extras.h
-      curl_metrics.h
-      include/waitfree-mpsc-queue/mpscq.h
-  c-sources:
-      third-party/include/waitfree-mpsc-queue/mpsc.c
-      cbits/curl_uv.c
-      cbits/message_chan.c
-      cbits/simple_string.c
-      cbits/extras.c
-      cbits/curl_metrics.c
-  extra-libraries:
-      curl
-      uv
+  ghc-options: -Wall -Wincomplete-patterns -Wno-type-defaults -Wno-unticked-promoted-constructors -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       PyF
     , async
-    , atomic-primops
     , base >=4.7 && <5
     , bytestring
     , containers
     , criterion
     , deepseq
-    , flush-queue
-    , hashable
     , http-client
     , http-conduit
     , hurl
     , inline-c
     , mtl
-    , mutable-containers
-    , parsers
-    , primitive
     , resourcet
     , roundRobin
     , singletons
     , singletons-th
-    , stm
-    , stm-chans
-    , stm-containers
-    , stm-delay
     , template-haskell
-    , text
-    , time
-    , unagi-chan
     , unliftio
-    , unordered-containers
-    , vector
-    , vector-hashtables
   default-language: GHC2021
