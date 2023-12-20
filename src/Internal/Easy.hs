@@ -44,13 +44,13 @@ newEasy :: IO CurlEasy
 newEasy = do
     CurlEasy <$> [CU.exp|CURL* { curl_easy_init() }|]
 
-allocateEasy :: MonadResource m => m (ReleaseKey, CurlEasy)
+allocateEasy :: (MonadResource m) => m (ReleaseKey, CurlEasy)
 allocateEasy =
     allocate
         newEasy
         \(CurlEasy easyPtr) -> [CU.block|void { curl_easy_cleanup($(CURL* easyPtr)); }|]
 
-setMetrics :: MonadIO m => CurlEasy -> m CurlMetricsContext
+setMetrics :: (MonadIO m) => CurlEasy -> m CurlMetricsContext
 setMetrics easy@(CurlEasy easyPtr) = do
     metricsContext@(CurlMetricsContext metricsCtxFptr) <- liftIO $ initCurlMetrics easy
     liftIO
@@ -63,14 +63,14 @@ setMetrics easy@(CurlEasy easyPtr) = do
     }|]
     pure metricsContext
 
-setEasyData :: MonadIO m => CurlEasy -> m (MVar (), EasyData)
+setEasyData :: (MonadIO m) => CurlEasy -> m (MVar (), EasyData)
 setEasyData (CurlEasy easyPtr) = do
     doneRequest <- newEmptyMVar @_ @()
     easyData@(EasyData easyDataFPtr) <- liftIO $ mkEasyData doneRequest
     liftIO [CU.block|void { curl_easy_setopt($(CURL* easyPtr), CURLOPT_PRIVATE, $fptr-ptr:(hs_easy_data_t* easyDataFPtr)); }|]
     pure (doneRequest, easyData)
 
-setSimpleStringResponse :: MonadIO m => CurlEasy -> m (ForeignPtr SimpleString)
+setSimpleStringResponse :: (MonadIO m) => CurlEasy -> m (ForeignPtr SimpleString)
 setSimpleStringResponse (CurlEasy easyPtr) = do
     simpleString <- liftIO $ mallocForeignPtr @SimpleString
     liftIO
@@ -83,7 +83,7 @@ setSimpleStringResponse (CurlEasy easyPtr) = do
     }|]
     pure simpleString
 
-setRequestBody :: MonadIO m => Request -> CurlEasy -> m ()
+setRequestBody :: (MonadIO m) => Request -> CurlEasy -> m ()
 setRequestBody Request{..} (CurlEasy easyPtr) =
     case body of
         Empty ->
@@ -102,13 +102,13 @@ setRequestBody Request{..} (CurlEasy easyPtr) =
                 curl_easy_setopt(easy, CURLOPT_POSTFIELDSIZE, (long)$bs-len:bs);
             }|]
 
-setUserOptions :: MonadIO m => Foldable t => t SomeOption -> CurlEasy -> m ()
+setUserOptions :: (MonadIO m) => (Foldable t) => t SomeOption -> CurlEasy -> m ()
 setUserOptions extraOptions (CurlEasy easyPtr) = liftIO $ traverse_ setSomeOption extraOptions
   where
     setSomeOption (SomeOption' (EasyOption' optVal :: EasyOption' opt)) =
         setEasyOption @opt easyPtr optVal
 
-setHTTPMethod :: MonadIO m => HTTPMethod -> CurlEasy -> m ()
+setHTTPMethod :: (MonadIO m) => HTTPMethod -> CurlEasy -> m ()
 setHTTPMethod method (CurlEasy easyPtr) = liftIO case method of
     Get -> [CU.block|void { curl_easy_setopt($(CURL* easyPtr), CURLOPT_HTTPGET, 1L); }|]
     Head -> [CU.block|void { curl_easy_setopt($(CURL* easyPtr), CURLOPT_NOBODY, 1L); }|]
@@ -117,7 +117,7 @@ setHTTPMethod method (CurlEasy easyPtr) = liftIO case method of
         let methodBS = httpMethodToBS method
         [CU.block|void { curl_easy_setopt($(CURL* easyPtr), CURLOPT_CUSTOMREQUEST, $bs-cstr:methodBS); }|]
 
-setDefaultHTTPOptions :: MonadIO m => CurlEasy -> m ()
+setDefaultHTTPOptions :: (MonadIO m) => CurlEasy -> m ()
 setDefaultHTTPOptions (CurlEasy easyPtr) =
     liftIO
         [CU.block|void {
@@ -129,7 +129,7 @@ setDefaultHTTPOptions (CurlEasy easyPtr) =
         curl_easy_setopt(easy, CURLOPT_NOSIGNAL, 1L);
     }|]
 
-setRequestOpts :: MonadIO m => Request -> CurlEasy -> m ()
+setRequestOpts :: (MonadIO m) => Request -> CurlEasy -> m ()
 setRequestOpts Request{..} (CurlEasy easyPtr) =
     liftIO
         [CU.block|void {
@@ -146,7 +146,7 @@ setRequestOpts Request{..} (CurlEasy easyPtr) =
     lowSpeedLimit' = fromIntegral lowSpeedLimit.lowSpeed
     lowSpeedTimeout' = fromIntegral lowSpeedLimit.timeout
 
-setHeaders :: MonadResource m => RequestHeader -> CurlEasy -> m [ReleaseKey]
+setHeaders :: (MonadResource m) => RequestHeader -> CurlEasy -> m [ReleaseKey]
 setHeaders headers (CurlEasy easyPtr) = case headers of
     NoHeaders -> pure mempty
     HeaderList [] -> pure mempty
@@ -158,7 +158,7 @@ setHeaders headers (CurlEasy easyPtr) = case headers of
         liftIO [CU.block|void { curl_easy_setopt($(CURL* easyPtr), CURLOPT_HTTPHEADER, $fptr-ptr:(curl_slist_t* slistFPtr)); }|]
         pure mempty
 
-initRequest :: MonadResource m => Request -> CurlEasy -> m RequestHandler
+initRequest :: (MonadResource m) => Request -> CurlEasy -> m RequestHandler
 initRequest request@Request{..} easy = do
     setDefaultHTTPOptions easy
     setHTTPMethod method easy

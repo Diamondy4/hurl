@@ -4,4 +4,3 @@ module Internal.Raw (module Internal.Raw.Context, module Internal.Raw.Curl) wher
 
 import Internal.Raw.Context
 import Internal.Raw.Curl
-

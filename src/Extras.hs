@@ -34,5 +34,5 @@ simpleStringToBS simpleStringPtr = do
 finalizeCharPtr :: FunPtr (Ptr CChar -> IO ())
 finalizeCharPtr = [C.funPtr| void free_char_ptr(char* s) { free(s); } |]
 
-registerForeignPtr :: MonadResource m => ForeignPtr a -> m ReleaseKey
+registerForeignPtr :: (MonadResource m) => ForeignPtr a -> m ReleaseKey
 registerForeignPtr fp = register $ finalizeForeignPtr fp

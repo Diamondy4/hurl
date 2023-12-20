@@ -1,9 +1,9 @@
 module Response where
 
+import Control.DeepSeq
 import Data.ByteString
 import GHC.Generics
-import Control.DeepSeq
-import Internal.Metrics ( Metrics )
+import Internal.Metrics (Metrics)
 
 data Response body = Response
     { info :: !HttpParts

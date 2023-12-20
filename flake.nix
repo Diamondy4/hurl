@@ -4,6 +4,7 @@
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs";
     flake-parts.url = "github:hercules-ci/flake-parts";
+    pre-commit-hooks-nix.url = "github:cachix/pre-commit-hooks.nix";
     haskell-flake.url = "github:srid/haskell-flake";
   };
 
@@ -17,13 +18,13 @@
       systems = nixpkgs.lib.systems.flakeExposed;
       imports = [
         inputs.haskell-flake.flakeModule
+        inputs.pre-commit-hooks-nix.flakeModule
+        inputs.flake-parts.flakeModules.easyOverlay
       ];
       perSystem = {
         self',
-        inputs',
         system,
         config,
-        final,
         lib,
         pkgs,
         ...
@@ -34,13 +35,17 @@
           zstdSupport = true;
         };
       in {
+        pre-commit.settings.hooks = {
+          alejandra.enable = true;
+          deadnix.enable = true;
+          statix.enable = true;
+          fourmolu.enable = true;
+          cabal-fmt.enable = true;
+        };
         _module.args.pkgs = import self.inputs.nixpkgs {
           inherit system;
           overlays = [
-            (final: prev: {
-              uv = prev.libuv;
-              libcurl = curl';
-            })
+            self.overlays.default
           ];
         };
 
@@ -59,9 +64,14 @@
             };
           };
         };
+        overlayAttrs = {
+          uv = pkgs.libuv;
+          libcurl = curl';
+        };
         packages.default = self'.packages.hurl;
         devShells.default = pkgs.mkShell {
           inputsFrom = [
+            config.pre-commit.devShell
             config.haskellProjects.default.outputs.devShell
           ];
           packages = with pkgs; [

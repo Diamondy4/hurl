@@ -9,3 +9,4 @@ CMakeLists.txt
 /build
 /result
 .direnv
+.pre-commit-config.yaml

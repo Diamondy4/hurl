@@ -1,5 +1,5 @@
-{-# LANGUAGE CPP #-}
 {-# LANGUAGE CApiFFI #-}
+{-# LANGUAGE CPP #-}
 
 module Internal.Raw.CurlFunctions where
 
