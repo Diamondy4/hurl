@@ -55,4 +55,4 @@ data RequestHandler = RequestHandler
 
 completeResponse :: MVar () -> IO ()
 completeResponse completeResponseWaker = do
-    void $ tryPutMVar completeResponseWaker ()  
+    void $ tryPutMVar completeResponseWaker ()

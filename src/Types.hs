@@ -1,4 +1,4 @@
-module Types where 
+module Types where
 
 import Control.DeepSeq
 import Data.ByteString

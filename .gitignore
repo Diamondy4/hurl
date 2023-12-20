@@ -1,5 +1,5 @@
 .stack-work/
-dist-newstyle
+dist*
 *~
 .DS_Store
 cmake*
@@ -8,3 +8,4 @@ CMakeLists.txt
 /cmake-build-debug
 /build
 /result
+.direnv

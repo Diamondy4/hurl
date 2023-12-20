@@ -1,0 +1,6 @@
+packages:
+  .
+
+optimization: 0
+
+ghc

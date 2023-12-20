@@ -1,175 +1,186 @@
-cabal-version: 1.12
+cabal-version:      3.0
+name:               hurl
+version:            0.1.0.0
+synopsis:           Network client based on curl multi interface
+description:
+  Please see the README on GitHub at <https://github.com/githubuser/hurl#readme>
 
--- This file has been generated from package.yaml by hpack version 0.35.2.
---
--- see: https://github.com/sol/hpack
-
-name:           hurl
-version:        0.1.0.0
-synopsis:       Network client based on curl multi interface
-description:    Please see the README on GitHub at <https://github.com/githubuser/hurl#readme>
-category:       Web
-homepage:       https://github.com/diamondy4/hurl#readme
-bug-reports:    https://github.com/diamondy4/hurl/issues
-author:         Diamondy4
-maintainer:     diamondy4@hotmail.com
-copyright:      2022 Diamondy4
-license:        Apache-2.0
-build-type:     Simple
+category:           Web
+homepage:           https://github.com/diamondy4/hurl#readme
+bug-reports:        https://github.com/diamondy4/hurl/issues
+author:             Diamondy4
+maintainer:         diamondy4@hotmail.com
+copyright:          2022 Diamondy4
+license:            Apache-2.0
+build-type:         Simple
 extra-source-files:
-    README.md
-    ChangeLog.md
+  ChangeLog.md
+  README.md
 
 source-repository head
-  type: git
+  type:     git
   location: https://github.com/diamondy4/hurl
 
-library
-  exposed-modules:
-      Agent
-      Extras
-      Internal.Callbacks
-      Internal.Easy
-      Internal.Metrics
-      Internal.MPSC
-      Internal.Multi
-      Internal.Options
-      Internal.Options.Class
-      Internal.Options.TH
-      Internal.Raw
-      Internal.Raw.Alloc
-      Internal.Raw.Context
-      Internal.Raw.Curl
-      Internal.Raw.CurlFunctions
-      Internal.Raw.Extras
-      Internal.Raw.Metrics
-      Internal.Raw.MPSC
-      Internal.Raw.SimpleString
-      Internal.Raw.UV
-      Internal.Slist
-      PyFCustom
-      Request
-      Response
-      Simple
-      Types
-  other-modules:
-      Paths_hurl
-  hs-source-dirs:
-      src
+flag no-pkg-config
+  description:
+    Don't use pkg-config to check for library dependences(on platforms other than linux, win and osx)
+
+  default:     False
+  manual:      True
+
+common warnings
+  ghc-options:
+    -Wall -Wno-unticked-promoted-constructors -Wmissing-methods
+    -Wunused-packages -Werror=missing-methods
+    -Werror=incomplete-patterns
+
+common extensions
   default-extensions:
-      OverloadedStrings
-      DerivingStrategies
-      DeriveAnyClass
-      LambdaCase
-      OverloadedRecordDot
-      BlockArguments
-      DerivingVia
-      DuplicateRecordFields
-      GeneralizedNewtypeDeriving
-      TypeFamilies
-      StrictData
-  ghc-options: -Wall -Wincomplete-patterns -Wno-type-defaults -Wno-unticked-promoted-constructors -Wall -Wincomplete-patterns -Wno-type-defaults -Wno-unticked-promoted-constructors -optc-O3 -optc-ffast-math
-  include-dirs:
-      cbits
-      third-party
+    BlockArguments
+    DataKinds
+    DefaultSignatures
+    DeriveAnyClass
+    DerivingStrategies
+    DerivingVia
+    DuplicateRecordFields
+    FunctionalDependencies
+    GADTs
+    ImpredicativeTypes
+    LambdaCase
+    MultiWayIf
+    NoCUSKs
+    NoNamedWildCards
+    NoStarIsType
+    OverloadedRecordDot
+    OverloadedStrings
+    PartialTypeSignatures
+    PatternSynonyms
+    StrictData
+    TypeFamilies
+    UndecidableInstances
+    ViewPatterns
+
+  default-language:   GHC2021
+
+library
+  import:             warnings, extensions
+
+  -- cabal-fmt: expand src
+  exposed-modules:
+    Agent
+    Extras
+    Internal.Callbacks
+    Internal.Easy
+    Internal.Metrics
+    Internal.MPSC
+    Internal.Multi
+    Internal.Options
+    Internal.Options.Class
+    Internal.Options.TH
+    Internal.Raw
+    Internal.Raw.Alloc
+    Internal.Raw.Context
+    Internal.Raw.Curl
+    Internal.Raw.CurlFunctions
+    Internal.Raw.Extras
+    Internal.Raw.Metrics
+    Internal.Raw.MPSC
+    Internal.Raw.SimpleString
+    Internal.Raw.UV
+    Internal.Slist
+    PyFCustom
+    Request
+    Response
+    Simple
+    Types
+
+  other-modules:      Paths_hurl
+  hs-source-dirs:     src
+  include-dirs:       cbits third-party
   install-includes:
-      curl_uv.h
-      message_chan.h
-      simple_string.h
-      extras.h
-      curl_metrics.h
-      include/waitfree-mpsc-queue/mpscq.h
+    curl_metrics.h
+    curl_uv.h
+    extras.h
+    include/waitfree-mpsc-queue/mpscq.h
+    message_chan.h
+    simple_string.h
+
   c-sources:
-      third-party/include/waitfree-mpsc-queue/mpsc.c
-      cbits/curl_uv.c
-      cbits/message_chan.c
-      cbits/simple_string.c
-      cbits/extras.c
-      cbits/curl_metrics.c
+    cbits/curl_metrics.c
+    cbits/curl_uv.c
+    cbits/extras.c
+    cbits/message_chan.c
+    cbits/simple_string.c
+    third-party/include/waitfree-mpsc-queue/mpsc.c
+
+  --if flag(no-pkg-config)
+  --
+
+  --else
   extra-libraries:
-      curl
-      uv
-  build-tools:
-      c2hs
+    curl
+    uv
+
+  pkgconfig-depends:  libcurl, libuv
+  build-tool-depends: c2hs:c2hs
   build-depends:
-      PyF
     , async
-    , base >=4.7 && <5
+    , base              >=4.7 && <5
     , bytestring
     , containers
     , deepseq
     , inline-c
     , mtl
+    , PyF
     , resourcet
     , roundRobin
     , singletons
     , singletons-th
     , template-haskell
     , unliftio
-  default-language: GHC2021
 
 test-suite hurl-test
-  type: exitcode-stdio-1.0
-  main-is: Spec.hs
-  other-modules:
-      Paths_hurl
-  hs-source-dirs:
-      test
-  default-extensions:
-      OverloadedStrings
-      DerivingStrategies
-      DeriveAnyClass
-      LambdaCase
-      OverloadedRecordDot
-      BlockArguments
-      DerivingVia
-      DuplicateRecordFields
-      GeneralizedNewtypeDeriving
-      TypeFamilies
-      StrictData
-  ghc-options: -Wall -Wincomplete-patterns -Wno-type-defaults -Wno-unticked-promoted-constructors -threaded -rtsopts -with-rtsopts=-N
+  import:         warnings, extensions
+  type:           exitcode-stdio-1.0
+  main-is:        Spec.hs
+  other-modules:  Paths_hurl
+  hs-source-dirs: test
+  ghc-options:
+    -Wall -Wincomplete-patterns -Wno-type-defaults
+    -Wno-unticked-promoted-constructors -threaded -rtsopts
+    -with-rtsopts=-N
+
   build-depends:
-      PyF
     , async
-    , base >=4.7 && <5
+    , base              >=4.7 && <5
     , bytestring
     , containers
     , deepseq
     , hurl
     , inline-c
     , mtl
+    , PyF
     , resourcet
     , roundRobin
     , singletons
     , singletons-th
     , template-haskell
     , unliftio
-  default-language: GHC2021
 
 benchmark hurl-benchmark
-  type: exitcode-stdio-1.0
-  main-is: Main.hs
-  other-modules:
-      Paths_hurl
-  hs-source-dirs:
-      benchmark
-  default-extensions:
-      OverloadedStrings
-      DerivingStrategies
-      DeriveAnyClass
-      LambdaCase
-      OverloadedRecordDot
-      BlockArguments
-      DerivingVia
-      DuplicateRecordFields
-      GeneralizedNewtypeDeriving
-      TypeFamilies
-      StrictData
-  ghc-options: -Wall -Wincomplete-patterns -Wno-type-defaults -Wno-unticked-promoted-constructors -threaded -rtsopts -with-rtsopts=-N
+  import:         warnings, extensions
+  type:           exitcode-stdio-1.0
+  main-is:        Main.hs
+  other-modules:  Paths_hurl
+  hs-source-dirs: benchmark
+  ghc-options:
+    -Wall -Wincomplete-patterns -Wno-type-defaults
+    -Wno-unticked-promoted-constructors -threaded -rtsopts
+    -with-rtsopts=-N
+
   build-depends:
-      PyF
     , async
-    , base >=4.7 && <5
+    , base              >=4.7 && <5
     , bytestring
     , containers
     , criterion
@@ -179,10 +190,10 @@ benchmark hurl-benchmark
     , hurl
     , inline-c
     , mtl
+    , PyF
     , resourcet
     , roundRobin
     , singletons
     , singletons-th
     , template-haskell
     , unliftio
-  default-language: GHC2021
