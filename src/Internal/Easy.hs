@@ -84,23 +84,25 @@ setSimpleStringResponse (CurlEasy easyPtr) = do
     pure simpleString
 
 setRequestBody :: (MonadIO m) => Request -> CurlEasy -> m ()
-setRequestBody Request{..} (CurlEasy easyPtr) =
-    case body of
-        Empty ->
-            liftIO
-                [CU.block|void {
+setRequestBody Request{..} (CurlEasy easyPtr) = case method of
+    Post ->
+        case body of
+            Empty ->
+                liftIO
+                    [CU.block|void {
                 CURL* easy = $(CURL* easyPtr);
                 curl_easy_setopt(easy, CURLOPT_POSTFIELDS, "");
                 curl_easy_setopt(easy, CURLOPT_POSTFIELDSIZE, 0L);
             }|]
-        Buffer bs ->
-            -- Request body is stored in its RequestHandler instance, thus it should outlive the use.
-            liftIO
-                [CU.block|void {
+            Buffer bs ->
+                -- Request body is stored in its RequestHandler instance, thus it should outlive the use.
+                liftIO
+                    [CU.block|void {
                 CURL* easy = $(CURL* easyPtr);
                 curl_easy_setopt(easy, CURLOPT_POSTFIELDS, $bs-ptr:bs);
                 curl_easy_setopt(easy, CURLOPT_POSTFIELDSIZE, (long)$bs-len:bs);
             }|]
+    _ -> return () -- TODO
 
 setUserOptions :: (MonadIO m) => (Foldable t) => t SomeOption -> CurlEasy -> m ()
 setUserOptions extraOptions (CurlEasy easyPtr) = liftIO $ traverse_ setSomeOption extraOptions
