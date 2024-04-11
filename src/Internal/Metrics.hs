@@ -6,6 +6,7 @@ module Internal.Metrics where
 
 import Control.DeepSeq (NFData)
 import Control.Monad.Cont
+import Control.Monad.IO.Class (liftIO)
 import Foreign
 import GHC.Generics
 import Internal.Raw
@@ -42,7 +43,7 @@ initCurlMetrics (CurlEasy easyPtr) = do
         [CU.block|void {
             curl_metrics_context_t* metrics_context = $(curl_metrics_context_t* curlMetricsCtxPtr);
             metrics_context->easy = $(CURL* easyPtr);
-            
+
             metrics_context->metrics.upload_progress = 0;
             metrics_context->metrics.upload_total = 0;
             metrics_context->metrics.download_progress = 0;

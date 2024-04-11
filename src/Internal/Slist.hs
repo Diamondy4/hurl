@@ -11,6 +11,7 @@ module Internal.Slist where
 
 import Control.Exception
 import Control.Monad.Cont
+import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Trans.Resource (MonadResource, ReleaseKey, allocate)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
