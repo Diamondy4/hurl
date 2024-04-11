@@ -5,8 +5,8 @@
 module Internal.Metrics where
 
 import Control.DeepSeq (NFData)
-import Control.Monad.Cont
-import Control.Monad.IO.Class (liftIO)
+import Control.Monad.Cont (ContT (..))
+import Control.Monad.Trans
 import Foreign
 import GHC.Generics
 import Internal.Raw
