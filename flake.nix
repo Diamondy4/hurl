@@ -82,6 +82,7 @@
           nativeBuildInputs = with pkgs; [
             pkg-config
           ];
+          GHC_INCLUDE_LOCATION = pkgs.haskellPackages.ghc;
         };
       };
     };

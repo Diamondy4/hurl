@@ -6,6 +6,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilyDependencies #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
+{-# OPTIONS_GHC -lcurl #-}
 
 module Internal.Options (module Internal.Options, module Internal.Options.Class) where
 

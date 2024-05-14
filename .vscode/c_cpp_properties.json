@@ -1,0 +1,15 @@
+{
+    "configurations": [
+        {
+            "name": "hurl",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "${GHC_INCLUDE_LOCATION}/lib/**"
+            ],
+            "defines": [],
+            "cStandard": "c17",
+            "cppStandard": "gnu++17"
+        }
+    ],
+    "version": 4
+}
