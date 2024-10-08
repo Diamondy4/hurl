@@ -1,9 +1,9 @@
 module Response where
 
 import Control.DeepSeq
-import Data.ByteString
 import GHC.Generics
 import Internal.Metrics (Metrics)
+import Network.HTTP.Types.Header
 
 data Response body = Response
     { info :: !HttpParts
@@ -15,7 +15,7 @@ data Response body = Response
 
 data HttpParts = HttpParts
     { statusCode :: !Int
-    , headers :: ![(ByteString, ByteString)]
+    , headers :: !RequestHeaders
     }
     deriving (Show, Eq, Generic)
     deriving anyclass (NFData)

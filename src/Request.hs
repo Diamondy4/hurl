@@ -12,6 +12,7 @@ import GHC.Generics
 import Internal.Options
 import Internal.Raw
 import Internal.Raw.Extras
+import Internal.Raw.Headers
 import Internal.Raw.Metrics (CurlMetricsContext)
 import Internal.Raw.SimpleString (SimpleStringPtr)
 import Types
@@ -46,6 +47,7 @@ data RequestHandler = RequestHandler
     { easy :: !CurlEasy
     , easyData :: !EasyData
     , doneRequest :: !(MVar ())
+    , requestHeaders :: HeadersData
     , requestBody :: !Body
     , responseSimpleString :: !SimpleStringPtr
     , metricsContext :: !CurlMetricsContext

@@ -71,6 +71,7 @@ library
     Extras
     Internal.Callbacks
     Internal.Easy
+    Internal.Headers
     Internal.Metrics
     Internal.MPSC
     Internal.Multi
@@ -83,6 +84,7 @@ library
     Internal.Raw.Curl
     Internal.Raw.CurlFunctions
     Internal.Raw.Extras
+    Internal.Raw.Headers
     Internal.Raw.Metrics
     Internal.Raw.MPSC
     Internal.Raw.SimpleString
@@ -101,6 +103,7 @@ library
     curl_metrics.h
     curl_uv.h
     extras.h
+    headers.h
     include/waitfree-mpsc-queue/mpscq.h
     message_chan.h
     simple_string.h
@@ -109,6 +112,7 @@ library
     cbits/curl_metrics.c
     cbits/curl_uv.c
     cbits/extras.c
+    cbits/headers.c
     cbits/message_chan.c
     cbits/simple_string.c
     third-party/include/waitfree-mpsc-queue/mpsc.c
@@ -127,8 +131,10 @@ library
     , async
     , base              >=4.7 && <5
     , bytestring
+    , case-insensitive
     , containers
     , deepseq
+    , http-types
     , inline-c
     , mtl
     , PyF
@@ -167,6 +173,35 @@ test-suite hurl-test
     , template-haskell
     , unliftio
 
+executable hurl-example
+  import:         warnings, extensions
+  main-is:        Main.hs
+  hs-source-dirs: examples
+  ghc-options:
+    -Wall -Wincomplete-patterns -Wno-type-defaults
+    -Wno-unticked-promoted-constructors -threaded -rtsopts
+    -with-rtsopts=-N
+
+  build-depends:
+    , async
+    , base              >=4.7 && <5
+    , bytestring
+    , containers
+    , criterion
+    , deepseq
+    , http-client
+    , http-conduit
+    , hurl
+    , inline-c
+    , mtl
+    , PyF
+    , resourcet
+    , roundRobin
+    , singletons
+    , singletons-th
+    , template-haskell
+    , unliftio
+
 benchmark hurl-benchmark
   import:         warnings, extensions
   type:           exitcode-stdio-1.0
@@ -180,6 +215,7 @@ benchmark hurl-benchmark
 
   build-depends:
     , async
+    , atomic-primops
     , base              >=4.7 && <5
     , bytestring
     , containers

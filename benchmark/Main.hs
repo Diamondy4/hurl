@@ -6,6 +6,7 @@ module Main where
 import Agent
 import Control.Concurrent.Async (forConcurrently)
 import Control.DeepSeq
+import Control.Monad.Trans.Resource (runResourceT)
 import Criterion.Main as Criterion
 import Criterion.Types (Config (verbosity), Verbosity (..))
 import Data.Atomics.Counter
@@ -76,9 +77,9 @@ makeMultpleParallel :: Int -> IO a -> IO [a]
 makeMultpleParallel n action =
     forConcurrently [1 .. n] $ const action
 
-makeGetRequestHurl :: AtomicCounter -> AtomicCounter -> AgentHandle -> IO (Either CurlCode (Hurl.Response LBS.ByteString))
+makeGetRequestHurl :: AtomicCounter -> AtomicCounter -> Agent -> IO (Either CurlCode (Hurl.Response LBS.ByteString))
 makeGetRequestHurl sCounter fCounter agent = do
-    !res <- httpLBS agent hurlGetRequest
+    !res <- runResourceT $ httpLBS agent hurlGetRequest
     case res of
         Left _ -> incrCounter_ 1 fCounter
         Right _ -> incrCounter_ 1 sCounter
@@ -87,13 +88,14 @@ makeGetRequestHurl sCounter fCounter agent = do
 hurlGetRequest :: Request
 hurlGetRequest =
     Request
-        { host = "https://dev-avod-rt.getshop.tv:414/body/"
+        { host = "https://example.com/"
         , timeoutMS = 0
         , connectionTimeoutMS = 400
         , lowSpeedLimit = LowSpeedLimit{timeout = 1, lowSpeed = 1}
         , Request.body = Empty
-        , Request.headers = []
+        , Request.headers = NoHeaders
         , method = Get
+        , extraOptions = []
         }
 
 makeGetRequestHTTPClient :: AtomicCounter -> AtomicCounter -> IO (Either HTTPSimple.HttpException ByteString)
@@ -110,4 +112,4 @@ httpClientGetRequest =
         { HTTPClient.responseTimeout = HTTPClient.responseTimeoutMicro 400000
         }
   where
-    req' = HTTPSimple.parseRequest_ "https://dev-avod-rt.getshop.tv:414/body/"
+    req' = HTTPSimple.parseRequest_ "https://example.com/"

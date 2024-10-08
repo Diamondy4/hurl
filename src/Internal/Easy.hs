@@ -13,8 +13,9 @@ module Internal.Easy where
 
 import Control.Monad.Trans.Resource
 import Data.Foldable
-import Foreign
+import Foreign (ForeignPtr, mallocForeignPtr)
 import Foreign.C.Types
+import Internal.Headers (setHeaderReader)
 import Internal.Metrics
 import Internal.Options
 import Internal.Raw
@@ -39,6 +40,7 @@ C.include "HsFFI.h"
 C.include "simple_string.h"
 C.include "extras.h"
 C.include "curl_metrics.h"
+C.include "headers.h"
 
 newEasy :: IO CurlEasy
 newEasy = do
@@ -73,6 +75,7 @@ setEasyData (CurlEasy easyPtr) = do
 setSimpleStringResponse :: (MonadIO m) => CurlEasy -> m (ForeignPtr SimpleString)
 setSimpleStringResponse (CurlEasy easyPtr) = do
     simpleString <- liftIO $ mallocForeignPtr @SimpleString
+
     liftIO
         [CU.block|void {
         CURL* easy = $(CURL* easyPtr);
@@ -165,6 +168,7 @@ initRequest request@Request{..} easy = do
     setDefaultHTTPOptions easy
     setHTTPMethod method easy
     setRequestOpts request easy
+    headerData <- setHeaderReader easy
     metricsContext <- setMetrics easy
     setRequestBody request easy
     releaseKeySlist <- setHeaders headers easy
@@ -180,4 +184,5 @@ initRequest request@Request{..} easy = do
             , responseSimpleString
             , metricsContext
             , resources = releaseKeySlist
+            , requestHeaders = headerData
             }

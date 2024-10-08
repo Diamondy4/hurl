@@ -19,6 +19,7 @@ import Agent
 import Data.RoundRobin
 import Extras
 import Internal.Easy
+import Internal.Headers
 import Internal.Metrics
 import Internal.Raw.Extras (getCurlCode)
 import Internal.Raw.MPSC (OuterMessage (Execute))
@@ -54,7 +55,17 @@ performRequest agent reqHandler = do
                      return http_code;
                  }|]
             metrics <- extractMetrics reqHandler.metricsContext
-            pure . Right $! Response{info = HttpParts{statusCode = fromIntegral code, headers = []}, body = BSL.fromStrict responseBS, metrics}
+            headers <- extractHeaders reqHandler.requestHeaders
+            pure . Right $!
+                Response
+                    { info =
+                        HttpParts
+                            { statusCode = fromIntegral code
+                            , headers = headers
+                            }
+                    , body = BSL.fromStrict responseBS
+                    , metrics
+                    }
         err -> pure $ Left err
 
 httpLBS :: (MonadResource m, MonadUnliftIO m) => Agent -> Request -> m (Either CurlCode (Response BSL.ByteString))
