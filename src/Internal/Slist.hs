@@ -39,11 +39,11 @@ toHeaderSlistCont headers = do
         lift
             [CU.block| curl_slist_t* {
                 curl_slist_t* slist = NULL;
-                curl_slist_t* temp = NULL;
 
                 for (size_t i = 0; i < $(size_t headersCArrLen); i++) {
-                  temp = curl_slist_append(temp, $(char** headersCArr)[i]);
+                  curl_slist_t* temp = curl_slist_append(slist, $(char** headersCArr)[i]);
                   if (temp == NULL) {
+                    curl_slist_free_all(slist);
                     return NULL;
                   }
                   slist = temp;
