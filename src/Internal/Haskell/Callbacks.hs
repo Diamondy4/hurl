@@ -135,11 +135,11 @@ hsTimerFunctionCallback !_multi !timeoutMillis !timerCbCtx = do
             atomicWriteIORef timeCallbackEnv.tkRef (Just tk)
         unregisterTimeout' tk = do
             atomicWriteIORef timeCallbackEnv.tkRef Nothing
-        -- unregisterTimeout timeCallbackEnv.timerManager tk
+            unregisterTimeout timeCallbackEnv.timerManager tk
         updateTimeout' oldTk timeout = do
             newTk <- registerTimeout timeCallbackEnv.timerManager timeout (onTimeout' timeCallbackEnv.eventQueue)
             atomicWriteIORef timeCallbackEnv.tkRef $ Just newTk
-    -- unregisterTimeout timeCallbackEnv.timerManager oldTk
+            unregisterTimeout timeCallbackEnv.timerManager oldTk
 
     tk' <- readIORef timeCallbackEnv.tkRef
     if

@@ -90,7 +90,7 @@ hurlGetRequest =
     Request
         { host = "https://example.com/"
         , timeoutMS = 0
-        , connectionTimeoutMS = 400
+        , connectionTimeoutMS = 600
         , lowSpeedLimit = LowSpeedLimit{timeout = 1, lowSpeed = 1}
         , Request.body = Empty
         , Request.headers = NoHeaders

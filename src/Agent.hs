@@ -21,6 +21,7 @@ import Control.Concurrent.MVar
 import Control.Concurrent.STM
 import Control.Exception
 import Control.Monad (forever, unless, void)
+import Data.Foldable
 import Data.IORef
 import Data.Maybe
 import Data.RoundRobin (RoundRobin, newRoundRobin)
@@ -134,34 +135,39 @@ run ctx = forever $ loop ctx
 
 loop :: AgentContext -> IO ()
 loop ctx = do
-    !val <- atomically $ (Left <$> readTQueue ctx.outerQueue) `orElse` (Right <$> readTQueue ctx.innerQueue)
-    case val of
+    vals <- atomically $ do
+        val <- (Left <$> readTQueue ctx.outerQueue) `orElse` (Right <$> readTQueue ctx.innerQueue)
+        outer <- flushTQueue ctx.outerQueue
+        inner <- flushTQueue ctx.innerQueue
+        pure $ fmap Left outer <> [val] <> fmap Right inner
+    -- !val <- atomically $ (Left <$> readTQueue ctx.outerQueue) `orElse` (Right <$> readTQueue ctx.innerQueue)
+    for_ vals \case
         Left !z -> case z of
             Execute !easy -> do
                 [C.block|void {
-                    curl_multi_add_handle($(CURLM* multi), $(CURL* easy));
-                }|]
+                        curl_multi_add_handle($(CURLM* multi), $(CURL* easy));
+                    }|]
             _ -> pure ()
         Right !z -> case z of
             TimerRing -> do
                 [C.block|void {
-                    CURLM* multi = $(CURLM* multi);
-                    int running_handles;
-                    curl_multi_socket_action(multi, CURL_SOCKET_TIMEOUT, 0, &running_handles);
-                    check_multi_info(multi);
-                }|]
+                        CURLM* multi = $(CURLM* multi);
+                        int running_handles;
+                        curl_multi_socket_action(multi, CURL_SOCKET_TIMEOUT, 0, &running_handles);
+                        check_multi_info(multi);
+                    }|]
                 [CU.block|void {
-                    CURLM* multi = $(CURLM* multi);
-                }|]
+                        CURLM* multi = $(CURLM* multi);
+                    }|]
             SocketEvent' SocketEvent{..} -> do
                 let Fd !fd = socket
                     CurlEventsOnSocket !bitmask = processToCurlEvents event
                 [C.block|void {
-                    CURLM* multi = $(CURLM* multi);
-                    int running_handles = 0;
-                    curl_multi_socket_action(multi, $(int fd), $(int bitmask), &running_handles);
-                    check_multi_info(multi);
-                }|]
+                        CURLM* multi = $(CURLM* multi);
+                        int running_handles = 0;
+                        curl_multi_socket_action(multi, $(int fd), $(int bitmask), &running_handles);
+                        check_multi_info(multi);
+                    }|]
   where
     !multi = ctx.multi
 
