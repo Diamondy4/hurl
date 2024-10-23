@@ -175,14 +175,11 @@ initRequest request@Request{..} easy = do
     (doneRequest, easyData) <- setEasyData easy
     responseSimpleString <- setSimpleStringResponse easy
     setUserOptions extraOptions easy
+    socketFunctionWaker <- newEmptyMVar
     pure
         RequestHandler
-            { easy
-            , easyData
-            , requestBody = body
-            , doneRequest
-            , responseSimpleString
-            , metricsContext
+            { requestBody = body
             , resources = releaseKeySlist
             , requestHeaders = headerData
+            , ..
             }

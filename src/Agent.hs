@@ -18,25 +18,30 @@ import Control.Concurrent (getNumCapabilities)
 import Control.Concurrent.Async (Async)
 import Control.Concurrent.Async qualified as Async
 import Control.Concurrent.MVar
+import Control.Concurrent.STM
 import Control.Exception
-import Control.Monad (unless, void)
+import Control.Monad (forever, unless, void)
+import Data.IORef
+import Data.Maybe
 import Data.RoundRobin (RoundRobin, newRoundRobin)
 import Data.Traversable
 import Extras
-import Foreign (freeStablePtr)
-import Foreign.Marshal (toBool)
+import Foreign (castStablePtrToPtr, freeStablePtr, newStablePtr)
 import Foreign.Ptr
+import GHC.Event (Event, getSystemEventManager, getSystemTimerManager)
 import GHC.Generics
-import Internal.MPSC
+import Internal.Haskell.Callbacks
+import Internal.Haskell.Event qualified as InnerEvent
 import Internal.Multi
 import Internal.Raw
 import Internal.Raw.Extras
 import Internal.Raw.MPSC
-import Internal.Raw.UV
+import Internal.Raw.SocketEvents
 import Language.C.Inline qualified as C
 import Language.C.Inline.Unsafe qualified as CU
 import PyF
 import Request
+import System.Posix.Types
 import Types
 
 C.context (C.baseCtx <> C.funCtx <> C.fptrCtx <> C.bsCtx <> localCtx)
@@ -48,15 +53,16 @@ C.include "<curl/curl.h>"
 C.include "HsFFI.h"
 
 C.include "simple_string.h"
-C.include "curl_uv.h"
 C.include "message_chan.h"
 C.include "include/waitfree-mpsc-queue/mpscq.h"
+C.include "curl_hs.h"
 
 data AgentContext = AgentContext
-    { uvLoop :: !UVLoop
-    , uvAsync :: !UVAsync
-    , multi :: !(Ptr CurlMulti)
-    , msgQueue :: !MPSCQ
+    { multi :: !(Ptr CurlMulti)
+    , innerQueue :: TQueue InnerEvent
+    , outerQueue :: TQueue OuterMessage
+    , socketCallbackEnv :: SocketCallbackEnv
+    , timerCallbackEnv :: TimerCallbackEnv
     }
     deriving (Generic)
 
@@ -93,45 +99,83 @@ spawnAgent config = do
 
 new :: Ptr CurlMulti -> IO AgentContext
 new multiPtr = do
-    msgQueue <- initMPSCQ 100000
-    uvLoopPtr <-
-        [C.block| uv_loop_t* {
-        uv_loop_t *loop = malloc(sizeof(uv_loop_t));
-        uv_loop_init(loop);
-        return loop;
+    innerQueue <- newTQueueIO
+    outerQueue <- newTQueueIO
+    timerManager <- getSystemTimerManager
+    eventManager <- fromJust <$> getSystemEventManager
+    tkRef <- newIORef Nothing
+    let socketCallbackEnv =
+            SocketCallbackEnv
+                { multi = multiPtr
+                , eventQueue = innerQueue
+                , eventManager = eventManager
+                }
+        timerCallbackEnv =
+            TimerCallbackEnv
+                { tkRef = tkRef
+                , timerManager = timerManager
+                , eventQueue = innerQueue
+                }
+    socketCallbackEnvPtr <- castStablePtrToPtr <$> newStablePtr socketCallbackEnv
+    timerCallbackEnvPtr <- castStablePtrToPtr <$> newStablePtr timerCallbackEnv
+
+    [CU.block|void {
+        CURLM *multi = $(CURLM* multiPtr);
+        curl_multi_setopt(multi, CURLMOPT_SOCKETFUNCTION, hsSocketFunctionCallback);
+        curl_multi_setopt(multi, CURLMOPT_SOCKETDATA, $(void* socketCallbackEnvPtr));
+
+        curl_multi_setopt(multi, CURLMOPT_TIMERFUNCTION, hsTimerFunctionCallback);
+        curl_multi_setopt(multi, CURLMOPT_TIMERDATA, $(void* timerCallbackEnvPtr));
     }|]
-    uvAsyncPtr <- withMPSCQ msgQueue \mpscqPtr ->
-        [C.block|uv_async_t* {
-        bind_uv_curl_multi($(uv_loop_t* uvLoopPtr), $(CURLM* multiPtr));
-        uv_async_t* uv_async = init_async_check_messages($(uv_loop_t* uvLoopPtr), $(mpsc_t* mpscqPtr), $(CURLM* multiPtr));
-        return uv_async;
-    }
-    |]
-    pure $ AgentContext{uvAsync = UVAsync uvAsyncPtr, uvLoop = UVLoop uvLoopPtr, multi = multiPtr, ..}
+    pure $ AgentContext{multi = multiPtr, ..}
 
 run :: AgentContext -> IO ()
-run ctx = do
-    let UVLoop uvLoopPtr = ctx.uvLoop
-    [C.block|void {
-        uv_run($(uv_loop_t* uvLoopPtr), UV_RUN_DEFAULT);
-    }|]
+run ctx = forever $ loop ctx
+
+loop :: AgentContext -> IO ()
+loop ctx = do
+    !val <- atomically $ (Left <$> readTQueue ctx.outerQueue) `orElse` (Right <$> readTQueue ctx.innerQueue)
+    case val of
+        Left !z -> case z of
+            Execute !easy -> do
+                [C.block|void {
+                    curl_multi_add_handle($(CURLM* multi), $(CURL* easy));
+                }|]
+            _ -> pure ()
+        Right !z -> case z of
+            TimerRing -> do
+                [C.block|void {
+                    CURLM* multi = $(CURLM* multi);
+                    int running_handles;
+                    curl_multi_socket_action(multi, CURL_SOCKET_TIMEOUT, 0, &running_handles);
+                    check_multi_info(multi);
+                }|]
+                [CU.block|void {
+                    CURLM* multi = $(CURLM* multi);
+                }|]
+            SocketEvent' SocketEvent{..} -> do
+                let Fd !fd = socket
+                    CurlEventsOnSocket !bitmask = processToCurlEvents event
+                [C.block|void {
+                    CURLM* multi = $(CURLM* multi);
+                    int running_handles = 0;
+                    curl_multi_socket_action(multi, $(int fd), $(int bitmask), &running_handles);
+                    check_multi_info(multi);
+                }|]
+  where
+    !multi = ctx.multi
+
+processToCurlEvents :: Event -> CurlEventsOnSocket
+processToCurlEvents e = flags
+  where
+    isReadable = if InnerEvent.fromGHCEvent e `InnerEvent.eventIs` InnerEvent.evtRead then CurlCSelectIn else CurlEventsOnSocket 0
+    isWritable = if InnerEvent.fromGHCEvent e `InnerEvent.eventIs` InnerEvent.evtWrite then CurlCSelectOut else CurlEventsOnSocket 0
+    flags = isReadable <> isWritable
 
 data QueueFull = QueueFull deriving (Show, Exception)
 
 sendMessage :: AgentContext -> OuterMessage -> IO ()
-sendMessage ctx outerMessage = do
-    InternalOuterMessage msgPtr <- toInnerOuterMessage outerMessage
-    let UVAsync asyncPtr = ctx.uvAsync
-    isEnqueued <- withMPSCQ ctx.msgQueue \mpscPtr ->
-        [CU.block|bool {
-        bool isEnqueued = mpscq_enqueue($(mpsc_t* mpscPtr), $(outer_message_t* msgPtr));
-        if (isEnqueued) {
-            uv_async_send($(uv_async_t* asyncPtr));
-        }
-        return isEnqueued;
-    }|]
-    unless (toBool isEnqueued) do
-        throwIO QueueFull
+sendMessage ctx outerMessage = atomically $ writeTQueue ctx.outerQueue outerMessage
 
 cancelRequest :: AgentContext -> RequestHandler -> IO ()
 cancelRequest ctx reqHandler = do

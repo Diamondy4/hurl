@@ -47,6 +47,7 @@ data RequestHandler = RequestHandler
     { easy :: !CurlEasy
     , easyData :: !EasyData
     , doneRequest :: !(MVar ())
+    , socketFunctionWaker :: MVar ()
     , requestHeaders :: HeadersData
     , requestBody :: !Body
     , responseSimpleString :: !SimpleStringPtr

@@ -3,8 +3,10 @@
         {
             "name": "hurl",
             "includePath": [
-                "${workspaceFolder}/**",
-                "${GHC_INCLUDE_LOCATION}/lib/**"
+                "${workspaceFolder}/cbits/**",
+                "${GHC_INCLUDE_LOCATION}/lib/ghc-9.6.6/lib/x86_64-linux-ghc-9.6.6/rts-1.0.2/include",
+                "${GHC_INCLUDE_LOCATION}/**",
+                "${workspaceFolder}/third-party/include/**"
             ],
             "defines": [],
             "cStandard": "c17",

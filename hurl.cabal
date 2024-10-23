@@ -71,6 +71,8 @@ library
     Extras
     Internal.Callbacks
     Internal.Easy
+    Internal.Haskell.Callbacks
+    Internal.Haskell.Event
     Internal.Headers
     Internal.Metrics
     Internal.MPSC
@@ -88,6 +90,7 @@ library
     Internal.Raw.Metrics
     Internal.Raw.MPSC
     Internal.Raw.SimpleString
+    Internal.Raw.SocketEvents
     Internal.Raw.UV
     Internal.Slist
     PyFCustom
@@ -100,8 +103,8 @@ library
   hs-source-dirs:     src
   include-dirs:       cbits third-party
   install-includes:
+    curl_hs.h
     curl_metrics.h
-    curl_uv.h
     extras.h
     headers.h
     include/waitfree-mpsc-queue/mpscq.h
@@ -109,8 +112,8 @@ library
     simple_string.h
 
   c-sources:
+    cbits/curl_hs.c
     cbits/curl_metrics.c
-    cbits/curl_uv.c
     cbits/extras.c
     cbits/headers.c
     cbits/message_chan.c
@@ -142,6 +145,7 @@ library
     , roundRobin
     , singletons
     , singletons-th
+    , stm
     , template-haskell
     , unliftio
 
@@ -184,6 +188,7 @@ executable hurl-example
 
   build-depends:
     , async
+    , atomic-primops
     , base              >=4.7 && <5
     , bytestring
     , containers

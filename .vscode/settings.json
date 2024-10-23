@@ -1,0 +1,17 @@
+{
+    "files.associations": {
+        "extras.h": "c",
+        "stddef.h": "c",
+        "hsffi.h": "c",
+        "curl_hs.h": "c",
+        "curl.h": "c",
+        "curl_uv.h": "c"
+    },
+    "files.exclude": {
+        "dist-newstyle/**": true
+    },
+    "search.exclude": {
+        "dist-newstyle/**": true
+    },
+    "C_Cpp.clang_format_fallbackStyle": "GNU",
+}

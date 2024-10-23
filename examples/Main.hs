@@ -4,10 +4,12 @@ import Agent
 import Control.Monad.Trans.Resource (runResourceT)
 import Request
 import Simple
+import System.IO
 import Types
 
 main :: IO ()
 main = do
+    hSetBuffering stdout LineBuffering
     initCurl
     let conf =
             AgentConfig
