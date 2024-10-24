@@ -14,6 +14,7 @@
 
 module Agent where
 
+import Control.Applicative
 import Control.Concurrent (getNumCapabilities)
 import Control.Concurrent.Async (Async)
 import Control.Concurrent.Async qualified as Async
@@ -21,7 +22,6 @@ import Control.Concurrent.MVar
 import Control.Concurrent.STM
 import Control.Exception
 import Control.Monad (forever, unless, void)
-import Data.Foldable
 import Data.IORef
 import Data.Maybe
 import Data.RoundRobin (RoundRobin, newRoundRobin)
@@ -61,6 +61,7 @@ C.include "curl_hs.h"
 data AgentContext = AgentContext
     { multi :: !(Ptr CurlMulti)
     , innerQueue :: TQueue InnerEvent
+    , timerWaker :: TMVar ()
     , outerQueue :: TQueue OuterMessage
     , socketCallbackEnv :: SocketCallbackEnv
     , timerCallbackEnv :: TimerCallbackEnv
@@ -105,6 +106,7 @@ new multiPtr = do
     timerManager <- getSystemTimerManager
     eventManager <- fromJust <$> getSystemEventManager
     tkRef <- newIORef Nothing
+    timerWaker <- newEmptyTMVarIO
     let socketCallbackEnv =
             SocketCallbackEnv
                 { multi = multiPtr
@@ -115,7 +117,7 @@ new multiPtr = do
             TimerCallbackEnv
                 { tkRef = tkRef
                 , timerManager = timerManager
-                , eventQueue = innerQueue
+                , waker = timerWaker
                 }
     socketCallbackEnvPtr <- castStablePtrToPtr <$> newStablePtr socketCallbackEnv
     timerCallbackEnvPtr <- castStablePtrToPtr <$> newStablePtr timerCallbackEnv
@@ -131,35 +133,36 @@ new multiPtr = do
     pure $ AgentContext{multi = multiPtr, ..}
 
 run :: AgentContext -> IO ()
-run ctx = forever $ loop ctx
+run !ctx = forever $! loop ctx
 
 loop :: AgentContext -> IO ()
-loop ctx = do
-    vals <- atomically $ do
-        val <- (Left <$> readTQueue ctx.outerQueue) `orElse` (Right <$> readTQueue ctx.innerQueue)
+loop !ctx = do
+    {- vals <- atomically $ do
+        val <- (Right <$> readTQueue ctx.innerQueue) `orElse` (Left <$> readTQueue ctx.outerQueue)
         outer <- flushTQueue ctx.outerQueue
         inner <- flushTQueue ctx.innerQueue
-        pure $ fmap Left outer <> [val] <> fmap Right inner
-    -- !val <- atomically $ (Left <$> readTQueue ctx.outerQueue) `orElse` (Right <$> readTQueue ctx.innerQueue)
-    for_ vals \case
-        Left !z -> case z of
-            Execute !easy -> do
-                [C.block|void {
-                        curl_multi_add_handle($(CURLM* multi), $(CURL* easy));
-                    }|]
-            _ -> pure ()
-        Right !z -> case z of
-            TimerRing -> do
-                [C.block|void {
+        pure $ [val] <> fmap Right inner <> fmap Left outer -}
+    !val <-
+        atomically $
+            (Right . Right <$> readTQueue ctx.innerQueue)
+                <|> (Left <$> takeTMVar ctx.timerWaker)
+                <|> (Right . Left <$> readTQueue ctx.outerQueue)
+    -- for_ vals \case
+    case val of
+        Left _ -> do
+            [C.block|void {
                         CURLM* multi = $(CURLM* multi);
                         int running_handles;
                         curl_multi_socket_action(multi, CURL_SOCKET_TIMEOUT, 0, &running_handles);
                         check_multi_info(multi);
                     }|]
-                [CU.block|void {
-                        CURLM* multi = $(CURLM* multi);
+        Right !z -> case z of
+            Left (Execute !easy) -> do
+                [C.block|void {
+                        curl_multi_add_handle($(CURLM* multi), $(CURL* easy));
                     }|]
-            SocketEvent' SocketEvent{..} -> do
+            Left _ -> pure ()
+            Right (SocketEvent' SocketEvent{..}) -> do
                 let Fd !fd = socket
                     CurlEventsOnSocket !bitmask = processToCurlEvents event
                 [C.block|void {

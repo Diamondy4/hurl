@@ -11,6 +11,7 @@
 module Internal.Haskell.Callbacks where
 
 import Control.Concurrent.STM
+import Control.Monad
 import Data.Foldable
 import Data.IORef
 import Foreign.C.Types
@@ -28,7 +29,7 @@ C.context (C.baseCtx <> localCtx)
 C.include "HsFFI.h"
 C.include "<curl/curl.h>"
 
-data InnerEvent = SocketEvent' SocketEvent | TimerRing
+newtype InnerEvent = SocketEvent' SocketEvent
     deriving (Show, Eq)
 
 data SocketEvent = SocketEvent
@@ -111,15 +112,15 @@ hsSocketFunctionCallback !_easyPtr !socketFd !action !socketCallbackEnvPtr !sock
 
 onSocketEvent :: TQueue InnerEvent -> Fd -> IOCallback
 onSocketEvent !events !fd !_fdKey !event =
-    atomically . writeTQueueNoDuplicates events . SocketEvent' $
+    atomically . writeTQueue events . SocketEvent' $
         SocketEvent
             { socket = fd
             , event = event
             }
 
 data TimerCallbackEnv = TimerCallbackEnv
-    { timerManager :: TimerManager
-    , eventQueue :: TQueue InnerEvent
+    { timerManager :: !TimerManager
+    , waker :: TMVar ()
     , tkRef :: IORef (Maybe TimeoutKey)
     }
 
@@ -128,36 +129,30 @@ foreign export ccall hsTimerFunctionCallback :: Ptr () -> CLong -> Ptr () -> IO 
 hsTimerFunctionCallback :: Ptr () -> CLong -> Ptr () -> IO Int
 hsTimerFunctionCallback !_multi !timeoutMillis !timerCbCtx = do
     let !timeoutMicros = fromIntegral $ timeoutMillis * 1000
-    !timeCallbackEnv <- deRefStablePtr =<< castPtrToStablePtr @TimerCallbackEnv <$> [CU.exp|void* { $(void* timerCbCtx) }|]
+    (TimerCallbackEnv{..}) <- deRefStablePtr =<< castPtrToStablePtr @TimerCallbackEnv <$> [CU.exp|void* { $(void* timerCbCtx) }|]
 
-    let registerTimeout' timeout = do
-            tk <- registerTimeout timeCallbackEnv.timerManager timeout (onTimeout' timeCallbackEnv.eventQueue)
-            atomicWriteIORef timeCallbackEnv.tkRef (Just tk)
-        unregisterTimeout' tk = do
-            atomicWriteIORef timeCallbackEnv.tkRef Nothing
-            unregisterTimeout timeCallbackEnv.timerManager tk
-        updateTimeout' oldTk timeout = do
-            newTk <- registerTimeout timeCallbackEnv.timerManager timeout (onTimeout' timeCallbackEnv.eventQueue)
-            atomicWriteIORef timeCallbackEnv.tkRef $ Just newTk
-            unregisterTimeout timeCallbackEnv.timerManager oldTk
+    let registerTimeout' !timeout = do
+            !tk <- registerTimeout timerManager timeout (onTimeout' waker)
+            writeIORef tkRef (Just tk)
+        unregisterTimeout' !tk = do
+            writeIORef tkRef Nothing
+            unregisterTimeout timerManager tk
+        updateTimeout' !oldTk !timeout = do
+            unregisterTimeout timerManager oldTk
+            !newTk <- registerTimeout timerManager timeout (onTimeout' waker)
+            writeIORef tkRef $ Just newTk
 
-    tk' <- readIORef timeCallbackEnv.tkRef
+    !tk' <- readIORef tkRef
     if
         | timeoutMillis < 0 -> maybe (pure ()) unregisterTimeout' tk'
         | timeoutMillis == 0 -> do
-            maybe (registerTimeout' 1) (\tk -> do updateTimeout' tk 1) tk'
+            maybe (registerTimeout' 1) (\(!tk) -> do updateTimeout' tk 1) tk'
         | otherwise -> do
-            maybe (registerTimeout' timeoutMicros) (\tk -> do updateTimeout' tk timeoutMicros) tk'
+            maybe (registerTimeout' timeoutMicros) (\(!tk) -> do updateTimeout' tk timeoutMicros) tk'
     pure 0
 
-onTimeout' :: TQueue InnerEvent -> TimeoutCallback
-onTimeout' !events = do
-    atomically . writeTQueueNoDuplicates events $ TimerRing
-
-onTimeout :: TQueue InnerEvent -> IORef (Maybe TimeoutKey) -> TimeoutCallback
-onTimeout events tkRef = do
-    atomicWriteIORef tkRef Nothing
-    atomically . writeTQueueNoDuplicates events $ TimerRing
+onTimeout' :: TMVar () -> TimeoutCallback
+onTimeout' !waker = atomically . void $ tryPutTMVar waker ()
 
 writeTQueueNoDuplicates :: (Eq a) => TQueue a -> a -> STM ()
 writeTQueueNoDuplicates q x = do
