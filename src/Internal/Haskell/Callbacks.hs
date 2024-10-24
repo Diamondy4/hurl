@@ -55,26 +55,26 @@ foreign export ccall hsSocketFunctionCallback :: Ptr CurlEasy -> Fd -> Int -> Pt
 hsSocketFunctionCallback :: Ptr CurlEasy -> Fd -> Int -> Ptr () -> Ptr () -> IO Int
 hsSocketFunctionCallback !_easyPtr !socketFd !action !socketCallbackEnvPtr !socketCtxPtr = do
     !socketCallbackEnv <- deRefStablePtr =<< castPtrToStablePtr @SocketCallbackEnv <$> [CU.exp|void* { $(void* socketCallbackEnvPtr) }|]
-    !socketCtx <-
+    !socketCtxRef <-
         if socketCtxPtr == nullPtr
             then pure Nothing
-            else Just <$> deRefStablePtr (castPtrToStablePtr @SocketCtx socketCtxPtr)
+            else Just <$> deRefStablePtr (castPtrToStablePtr @(IORef SocketCtx) socketCtxPtr)
 
     let !event = toEnum action
     case event of
         CurlPollRemove -> do
-            for_ socketCtx (unregisterFd' socketCallbackEnv . (.fdKey))
+            for_ socketCtxRef (unregisterFd' socketCallbackEnv)
         CurlPollIn -> do
-            updateOrRegisterFd' socketCallbackEnv socketCtx evtRead socketFd
+            updateOrRegisterFd' socketCallbackEnv socketCtxRef evtRead socketFd
         CurlPollOut -> do
-            updateOrRegisterFd' socketCallbackEnv socketCtx evtWrite socketFd
+            updateOrRegisterFd' socketCallbackEnv socketCtxRef evtWrite socketFd
         CurlPollInOut -> do
-            updateOrRegisterFd' socketCallbackEnv socketCtx (evtRead <> evtWrite) socketFd
+            updateOrRegisterFd' socketCallbackEnv socketCtxRef (evtRead <> evtWrite) socketFd
     pure 0
   where
-    updateOrRegisterFd' !socketCallbackEnv !socketCtx !newEvts !fd = case socketCtx of
+    updateOrRegisterFd' !socketCallbackEnv !socketCtxRef !newEvts !fd = case socketCtxRef of
         Nothing -> registerFd' socketCallbackEnv newEvts fd
-        Just !socketCtx' -> updateFd' socketCallbackEnv socketCtx' newEvts fd
+        Just !socketCtxRef' -> updateFd' socketCallbackEnv socketCtxRef' newEvts fd
     registerFd' (SocketCallbackEnv{..}) !evts !fd = do
         !newFdKey <- registerFd eventManager (onSocketEvent eventQueue fd) fd evts MultiShot
         let socketCtx =
@@ -83,32 +83,29 @@ hsSocketFunctionCallback !_easyPtr !socketFd !action !socketCallbackEnvPtr !sock
                     , fdKey = newFdKey
                     }
             Fd !fdC = fd
-        !newSocketCtxPtr <- castStablePtrToPtr <$> newStablePtr socketCtx
+        !newSocketCtxRefPtr <- castStablePtrToPtr <$> (newStablePtr =<< newIORef socketCtx)
         [CU.block|void {
-                curl_multi_assign($(CURLM* multi), $(int fdC), $(void* newSocketCtxPtr));
+                curl_multi_assign($(CURLM* multi), $(int fdC), $(void* newSocketCtxRefPtr));
             }|]
-    unregisterFd' !socketCallbackEnv !fdKey = do
+    unregisterFd' !socketCallbackEnv !socketCtxRef = do
+        fdKey <- (.fdKey) <$> readIORef socketCtxRef
         unregisterFd socketCallbackEnv.eventManager fdKey
         [CU.block|void {
                 hs_free_stable_ptr($(void* socketCtxPtr));
             }|]
-    updateFd' (SocketCallbackEnv{..}) !socketCtx !newEvts !fd = do
+    updateFd' (SocketCallbackEnv{..}) !socketCtxRef !newEvts !fd = do
+        socketCtx <- readIORef socketCtxRef
         if socketCtx.curEvents == newEvts
             then pure ()
             else do
-                !newFdKey <- registerFd eventManager (onSocketEvent eventQueue fd) fd newEvts MultiShot
                 unregisterFd eventManager socketCtx.fdKey
+                !newFdKey <- registerFd eventManager (onSocketEvent eventQueue fd) fd newEvts MultiShot
                 let !newSocketCtx =
                         SocketCtx
                             { curEvents = newEvts
                             , fdKey = newFdKey
                             }
-                    Fd !fdC = fd
-                !newSocketCtxPtr <- castStablePtrToPtr <$> newStablePtr newSocketCtx
-                [CU.block|void {
-                        hs_free_stable_ptr($(void* socketCtxPtr));
-                        curl_multi_assign($(CURLM* multi), $(int fdC), $(void* newSocketCtxPtr));
-                    }|]
+                writeIORef socketCtxRef newSocketCtx
 
 onSocketEvent :: TQueue InnerEvent -> Fd -> IOCallback
 onSocketEvent !events !fd !_fdKey !event =
