@@ -8,7 +8,7 @@ import GHC.Generics
 import Unsafe.Coerce
 
 newtype Event = Event Int
-    deriving (Eq, Generic)
+    deriving (Show, Eq, Generic, Ord)
 
 eventIs :: Event -> Event -> Bool
 eventIs (Event a) (Event b) = a .&. b /= 0

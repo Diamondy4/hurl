@@ -64,6 +64,7 @@ common extensions
 
 library
   import:             warnings, extensions
+  ghc-options:        -fprof-auto
 
   -- cabal-fmt: expand src
   exposed-modules:
@@ -140,13 +141,17 @@ library
     , http-types
     , inline-c
     , mtl
+    , primitive
     , PyF
+    , resource-pool
     , resourcet
     , roundRobin
     , singletons
     , singletons-th
     , stm
+    , stm-containers
     , template-haskell
+    , unboxed-ref
     , unliftio
 
 test-suite hurl-test
@@ -214,7 +219,7 @@ benchmark hurl-benchmark
   other-modules:  Paths_hurl
   hs-source-dirs: benchmark
   ghc-options:
-    -Wall -Wincomplete-patterns -Wno-type-defaults
+    -Wall -Wincomplete-patterns -Wno-type-defaults -fprof-auto
     -Wno-unticked-promoted-constructors -threaded -rtsopts
     -with-rtsopts=-N
 

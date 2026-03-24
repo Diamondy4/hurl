@@ -22,14 +22,15 @@ import Control.Concurrent.MVar
 import Control.Concurrent.STM
 import Control.Exception
 import Control.Monad (forever, unless, void)
-import Data.IORef
+import Data.Foldable
+import Data.IORef.Unboxed (newIORefU)
 import Data.Maybe
 import Data.RoundRobin (RoundRobin, newRoundRobin)
 import Data.Traversable
 import Extras
 import Foreign (castStablePtrToPtr, freeStablePtr, newStablePtr)
 import Foreign.Ptr
-import GHC.Event (Event, getSystemEventManager, getSystemTimerManager)
+import GHC.Event
 import GHC.Generics
 import Internal.Haskell.Callbacks
 import Internal.Haskell.Event qualified as InnerEvent
@@ -60,11 +61,10 @@ C.include "curl_hs.h"
 
 data AgentContext = AgentContext
     { multi :: !(Ptr CurlMulti)
-    , innerQueue :: TQueue InnerEvent
-    , timerWaker :: TMVar ()
-    , outerQueue :: TQueue OuterMessage
-    , socketCallbackEnv :: SocketCallbackEnv
-    , timerCallbackEnv :: TimerCallbackEnv
+    , timerWaker :: !(TMVar ())
+    , outerQueue :: !(TQueue OuterMessage)
+    , socketCallbackEnv :: !SocketCallbackEnv
+    , timerCallbackEnv :: !TimerCallbackEnv
     }
     deriving (Generic)
 
@@ -101,17 +101,17 @@ spawnAgent config = do
 
 new :: Ptr CurlMulti -> IO AgentContext
 new multiPtr = do
-    innerQueue <- newTQueueIO
     outerQueue <- newTQueueIO
     timerManager <- getSystemTimerManager
     eventManager <- fromJust <$> getSystemEventManager
-    tkRef <- newIORef Nothing
+    tkRef <- newIORefU (-1)
     timerWaker <- newEmptyTMVarIO
+    socketEventsState <- initSocketEventState
     let socketCallbackEnv =
             SocketCallbackEnv
                 { multi = multiPtr
-                , eventQueue = innerQueue
                 , eventManager = eventManager
+                , socketEventsState = socketEventsState
                 }
         timerCallbackEnv =
             TimerCallbackEnv
@@ -135,43 +135,47 @@ new multiPtr = do
 run :: AgentContext -> IO ()
 run !ctx = forever $! loop ctx
 
+waitToFlushTQueue :: TQueue a -> STM [a]
+waitToFlushTQueue tq = do
+    val <- isEmptyTQueue tq
+    if val
+        then retry
+        else flushTQueue tq
+
 loop :: AgentContext -> IO ()
 loop !ctx = do
-    {- vals <- atomically $ do
-        val <- (Right <$> readTQueue ctx.innerQueue) `orElse` (Left <$> readTQueue ctx.outerQueue)
-        outer <- flushTQueue ctx.outerQueue
-        inner <- flushTQueue ctx.innerQueue
-        pure $ [val] <> fmap Right inner <> fmap Left outer -}
     !val <-
         atomically $
-            (Right . Right <$> readTQueue ctx.innerQueue)
-                <|> (Left <$> takeTMVar ctx.timerWaker)
-                <|> (Right . Left <$> readTQueue ctx.outerQueue)
-    -- for_ vals \case
+            (Left <$> takeTMVar ctx.timerWaker)
+                <|> (Right . Right <$> waitFlushSocketEventState ctx.socketCallbackEnv.socketEventsState)
+                <|> (Right . Left <$> waitToFlushTQueue ctx.outerQueue)
     case val of
         Left _ -> do
             [C.block|void {
-                        CURLM* multi = $(CURLM* multi);
-                        int running_handles;
-                        curl_multi_socket_action(multi, CURL_SOCKET_TIMEOUT, 0, &running_handles);
-                        check_multi_info(multi);
-                    }|]
+                int running_handles;
+                curl_multi_socket_action($(CURLM* multi), CURL_SOCKET_TIMEOUT, 0, &running_handles);
+            }|]
         Right !z -> case z of
-            Left (Execute !easy) -> do
-                [C.block|void {
+            Left evts -> for_ evts \case
+                (Execute !easy) -> do
+                    [C.block|void {
                         curl_multi_add_handle($(CURLM* multi), $(CURL* easy));
                     }|]
-            Left _ -> pure ()
-            Right (SocketEvent' SocketEvent{..}) -> do
-                let Fd !fd = socket
-                    CurlEventsOnSocket !bitmask = processToCurlEvents event
-                [C.block|void {
-                        CURLM* multi = $(CURLM* multi);
+                _ -> pure ()
+            Right evts -> for_ evts \case
+                (SocketEvent{..}) -> do
+                    let Fd !fd = socket
+                        CurlEventsOnSocket !bitmask = processToCurlEvents $ InnerEvent.toGHCEvent event
+                    [C.block|void {
                         int running_handles = 0;
-                        curl_multi_socket_action(multi, $(int fd), $(int bitmask), &running_handles);
-                        check_multi_info(multi);
+                        curl_multi_socket_action($(CURLM* multi), $(int fd), $(int bitmask), &running_handles);
                     }|]
+    [C.block| void {
+        check_multi_info($(CURLM* multi));
+    }|]
   where
+    -- print "done socket evts"
+
     !multi = ctx.multi
 
 processToCurlEvents :: Event -> CurlEventsOnSocket

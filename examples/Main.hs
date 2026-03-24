@@ -26,9 +26,9 @@ main = do
 hurlGetRequest :: Request
 hurlGetRequest =
     Request
-        { host = "https://example.com/"
+        { host = "https://common-cdn.getshop.tv/vitrina-ads/2023-11-testSamolet/vast-test.xml"
         , timeoutMS = 0
-        , connectionTimeoutMS = 1000
+        , connectionTimeoutMS = 400
         , lowSpeedLimit = LowSpeedLimit{timeout = 1, lowSpeed = 1}
         , Request.body = Empty
         , Request.headers = NoHeaders

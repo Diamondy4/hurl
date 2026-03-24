@@ -7,6 +7,9 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# OPTIONS_GHC -Wno-type-defaults #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+
+{-# HLINT ignore "Redundant multi-way if" #-}
 
 module Internal.Haskell.Callbacks where
 
@@ -14,15 +17,21 @@ import Control.Concurrent.STM
 import Control.Monad
 import Data.Foldable
 import Data.IORef
+import Data.IORef.Unboxed (IORefU, readIORefU, writeIORefU)
+import Data.Set
+import Data.Set qualified as Set
 import Foreign.C.Types
 import Foreign.Ptr
 import Foreign.StablePtr
 import GHC.Event
+import GHC.Generics
+import Internal.Haskell.Event qualified as InnerEvent
 import Internal.Raw
 import Internal.Raw.SocketEvents
 import Language.C.Inline qualified as C
 import Language.C.Inline.Unsafe qualified as CU
 import System.Posix.Types
+import Unsafe.Coerce
 
 C.context (C.baseCtx <> localCtx)
 
@@ -34,21 +43,42 @@ newtype InnerEvent = SocketEvent' SocketEvent
 
 data SocketEvent = SocketEvent
     { socket :: !Fd
-    , event :: !Event
+    , event :: !InnerEvent.Event
     }
-    deriving (Show, Eq)
+    deriving (Show, Eq, Ord, Generic)
 
 data SocketCallbackEnv = SocketCallbackEnv
     { eventManager :: !EventManager
-    , eventQueue :: !(TQueue InnerEvent)
     , multi :: !(Ptr CurlMulti)
+    , socketEventsState :: SocketEventState
     }
 
 data SocketCtx = SocketCtx
-    { curEvents :: Event
-    , fdKey :: FdKey
+    { curEvents :: !Event
+    , fdKey :: !FdKey
     }
     deriving (Show)
+
+data SocketEventState = SocketEventState
+    { eventsHappened :: !(TVar (Set SocketEvent))
+    , eventsOrder :: !(TVar [SocketEvent])
+    }
+
+initSocketEventState :: IO SocketEventState
+initSocketEventState = do
+    eventsHappened <- newTVarIO mempty
+    eventsOrder <- newTVarIO []
+    pure SocketEventState{..}
+
+waitFlushSocketEventState :: SocketEventState -> STM [SocketEvent]
+waitFlushSocketEventState SocketEventState{..} = do
+    events <- readTVar eventsOrder
+    case events of
+        [] -> retry
+        _ -> do
+            writeTVar eventsHappened mempty
+            writeTVar eventsOrder mempty
+            pure events
 
 foreign export ccall hsSocketFunctionCallback :: Ptr CurlEasy -> Fd -> Int -> Ptr () -> Ptr () -> IO Int
 
@@ -76,7 +106,7 @@ hsSocketFunctionCallback !_easyPtr !socketFd !action !socketCallbackEnvPtr !sock
         Nothing -> registerFd' socketCallbackEnv newEvts fd
         Just !socketCtxRef' -> updateFd' socketCallbackEnv socketCtxRef' newEvts fd
     registerFd' (SocketCallbackEnv{..}) !evts !fd = do
-        !newFdKey <- registerFd eventManager (onSocketEvent eventQueue fd) fd evts MultiShot
+        !newFdKey <- registerFd eventManager (onSocketEvent socketEventsState fd) fd evts MultiShot
         let socketCtx =
                 SocketCtx
                     { curEvents = evts
@@ -98,8 +128,8 @@ hsSocketFunctionCallback !_easyPtr !socketFd !action !socketCallbackEnvPtr !sock
         if socketCtx.curEvents == newEvts
             then pure ()
             else do
+                !newFdKey <- registerFd eventManager (onSocketEvent socketEventsState fd) fd newEvts MultiShot
                 unregisterFd eventManager socketCtx.fdKey
-                !newFdKey <- registerFd eventManager (onSocketEvent eventQueue fd) fd newEvts MultiShot
                 let !newSocketCtx =
                         SocketCtx
                             { curEvents = newEvts
@@ -107,53 +137,47 @@ hsSocketFunctionCallback !_easyPtr !socketFd !action !socketCallbackEnvPtr !sock
                             }
                 writeIORef socketCtxRef newSocketCtx
 
-onSocketEvent :: TQueue InnerEvent -> Fd -> IOCallback
-onSocketEvent !events !fd !_fdKey !event =
-    atomically . writeTQueue events . SocketEvent' $
+onSocketEvent :: SocketEventState -> Fd -> IOCallback
+onSocketEvent SocketEventState{..} !fd !_fdKey !event = atomically do
+    !eventsHappened' <- readTVar eventsHappened
+    if Set.member se eventsHappened'
+        then pure ()
+        else do
+            modifyTVar' eventsHappened . Set.insert $! se
+            modifyTVar' eventsOrder . (:) $! se
+  where
+    !se =
         SocketEvent
             { socket = fd
-            , event = event
+            , event = InnerEvent.fromGHCEvent event
             }
 
 data TimerCallbackEnv = TimerCallbackEnv
     { timerManager :: !TimerManager
-    , waker :: TMVar ()
-    , tkRef :: IORef (Maybe TimeoutKey)
+    , waker :: !(TMVar ())
+    , tkRef :: !(IORefU Int)
     }
 
 foreign export ccall hsTimerFunctionCallback :: Ptr () -> CLong -> Ptr () -> IO Int
 
 hsTimerFunctionCallback :: Ptr () -> CLong -> Ptr () -> IO Int
 hsTimerFunctionCallback !_multi !timeoutMillis !timerCbCtx = do
-    let !timeoutMicros = fromIntegral $ timeoutMillis * 1000
+    let !timeoutMicros' = fromIntegral $ timeoutMillis * 1000
+        !timeoutMicros = if timeoutMicros' == 0 then 1 else timeoutMicros'
     (TimerCallbackEnv{..}) <- deRefStablePtr =<< castPtrToStablePtr @TimerCallbackEnv <$> [CU.exp|void* { $(void* timerCbCtx) }|]
 
-    let registerTimeout' !timeout = do
-            !tk <- registerTimeout timerManager timeout (onTimeout' waker)
-            writeIORef tkRef (Just tk)
-        unregisterTimeout' !tk = do
-            writeIORef tkRef Nothing
-            unregisterTimeout timerManager tk
-        updateTimeout' !oldTk !timeout = do
-            unregisterTimeout timerManager oldTk
-            !newTk <- registerTimeout timerManager timeout (onTimeout' waker)
-            writeIORef tkRef $ Just newTk
-
-    !tk' <- readIORef tkRef
+    !tk' <- readIORefU tkRef
+    let !tk :: TimeoutKey = unsafeCoerce tk'
     if
-        | timeoutMillis < 0 -> maybe (pure ()) unregisterTimeout' tk'
-        | timeoutMillis == 0 -> do
-            maybe (registerTimeout' 1) (\(!tk) -> do updateTimeout' tk 1) tk'
+        | timeoutMillis < 0 -> when (tk' /= -1) $ do
+            writeIORefU tkRef $ -1
+            unregisterTimeout timerManager tk
         | otherwise -> do
-            maybe (registerTimeout' timeoutMicros) (\(!tk) -> do updateTimeout' tk timeoutMicros) tk'
+            !newTk <- registerTimeout timerManager timeoutMicros (onTimeout' waker)
+            writeIORefU tkRef (unsafeCoerce newTk)
+            when (tk' /= -1) $ unregisterTimeout timerManager tk
+
     pure 0
 
 onTimeout' :: TMVar () -> TimeoutCallback
 onTimeout' !waker = atomically . void $ tryPutTMVar waker ()
-
-writeTQueueNoDuplicates :: (Eq a) => TQueue a -> a -> STM ()
-writeTQueueNoDuplicates q x = do
-    y <- tryPeekTQueue q
-    case y of
-        Just y' | x == y' -> pure ()
-        _ -> writeTQueue q x
